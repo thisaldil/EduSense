@@ -2,6 +2,8 @@ import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   Pressable,
   SafeAreaView,
   StyleSheet,
@@ -11,15 +13,43 @@ import {
 } from "react-native";
 
 import { Colors, Typography } from "@/constants/theme";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function SignInScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { login } = useAuth();
 
-  const onSubmit = () => {
-    // TODO: hook up to backend auth
-    router.replace("/");
+  const onSubmit = async () => {
+    // Validation
+    if (!email.trim()) {
+      Alert.alert("Error", "Please enter your email");
+      return;
+    }
+    if (!password) {
+      Alert.alert("Error", "Please enter your password");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      
+      // Login with backend
+      await login({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+
+      // Login successful, navigate to home with tabs
+      router.replace("/(tabs)");
+    } catch (error: any) {
+      const errorMessage = error.message || "Login failed. Please check your credentials.";
+      Alert.alert("Login Failed", errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const goToSignUp = () => {
@@ -84,8 +114,19 @@ export function SignInScreen() {
             <Text style={styles.forgotText}>Forgot Password?</Text>
           </Pressable>
 
-          <Pressable style={styles.primaryButton} onPress={onSubmit}>
-            <Text style={styles.primaryText}>Sign in</Text>
+          <Pressable
+            style={[
+              styles.primaryButton,
+              isSubmitting && styles.primaryButtonDisabled,
+            ]}
+            onPress={onSubmit}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator color={Colors.light.background} />
+            ) : (
+              <Text style={styles.primaryText}>Sign in</Text>
+            )}
           </Pressable>
 
           <Pressable style={styles.googleButton} onPress={onGoogle}>
@@ -195,6 +236,9 @@ const styles = StyleSheet.create({
   primaryText: {
     ...Typography.button,
     color: Colors.light.background,
+  },
+  primaryButtonDisabled: {
+    opacity: 0.6,
   },
   googleButton: {
     marginTop: 12,

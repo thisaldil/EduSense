@@ -2,6 +2,8 @@ import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   Pressable,
   SafeAreaView,
   StyleSheet,
@@ -11,15 +13,58 @@ import {
 } from "react-native";
 
 import { Colors, Typography } from "@/constants/theme";
+import { useAuth } from "@/contexts/AuthContext";
+import { splitName, generateUsernameFromEmail } from "@/services/auth";
 
 export function SignUpScreen() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { register } = useAuth();
 
-  const onSubmit = () => {
-    // TODO: hook up to backend auth
-    router.replace("/auth/signin");
+  const onSubmit = async () => {
+    // Validation
+    if (!name.trim()) {
+      Alert.alert("Error", "Please enter your name");
+      return;
+    }
+    if (!email.trim()) {
+      Alert.alert("Error", "Please enter your email");
+      return;
+    }
+    if (!password || password.length < 6) {
+      Alert.alert("Error", "Password must be at least 6 characters");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+
+      // Split name into first and last name
+      const { first_name, last_name } = splitName(name);
+      const username = generateUsernameFromEmail(email);
+
+      // Register with backend
+      await register({
+        email: email.trim().toLowerCase(),
+        username,
+        password,
+        first_name,
+        last_name,
+        date_of_birth: "2010-01-01", // Default date - you can add a date picker later
+        gender: "other", // Default gender - you can add a picker later
+      });
+
+      // Registration successful, navigate to home with tabs
+      router.replace("/(tabs)");
+    } catch (error: any) {
+      const errorMessage =
+        error.message || "Registration failed. Please try again.";
+      Alert.alert("Registration Failed", errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const goToSignIn = () => {
@@ -80,8 +125,19 @@ export function SignUpScreen() {
             onChangeText={setPassword}
           />
 
-          <Pressable style={styles.primaryButton} onPress={onSubmit}>
-            <Text style={styles.primaryText}>Sign up</Text>
+          <Pressable
+            style={[
+              styles.primaryButton,
+              isSubmitting && styles.primaryButtonDisabled,
+            ]}
+            onPress={onSubmit}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator color={Colors.light.background} />
+            ) : (
+              <Text style={styles.primaryText}>Sign up</Text>
+            )}
           </Pressable>
 
           <Pressable style={styles.googleButton} onPress={onGoogle}>
@@ -176,6 +232,9 @@ const styles = StyleSheet.create({
     ...Typography.button,
     color: Colors.light.background,
     letterSpacing: 0.2,
+  },
+  primaryButtonDisabled: {
+    opacity: 0.6,
   },
   linkRow: {
     flexDirection: "row",

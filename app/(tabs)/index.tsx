@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   FlatList,
   ImageBackground,
@@ -15,6 +15,7 @@ import {
 } from "react-native";
 
 import { Colors, Typography } from "@/constants/theme";
+import { useAuth } from "@/contexts/AuthContext";
 
 type Subject = "Physics" | "Biology" | "Cognition" | "Skills";
 
@@ -88,8 +89,17 @@ const SUBJECT_COLORS: Record<Subject, string> = {
 };
 
 export default function HomeScreen() {
-  const userName = "Eran";
+  const { user, isAuthenticated } = useAuth();
+  const userName = user?.first_name || user?.username || "User";
+  const userInitial = userName.charAt(0).toUpperCase();
   const [search, setSearch] = useState("");
+
+  // Redirect to welcome if not authenticated
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.replace("/welcome");
+    }
+  }, [isAuthenticated]);
 
   const playTapFeedback = async () => {
     try {
@@ -193,6 +203,7 @@ export default function HomeScreen() {
     );
   };
 
+  // Authenticated home screen
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
@@ -204,11 +215,11 @@ export default function HomeScreen() {
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <View style={styles.avatarCircle}>
-              <Text style={styles.avatarText}>{userName.charAt(0)}</Text>
+              <Text style={styles.avatarText}>{userInitial}</Text>
             </View>
             <View>
-              <Text style={styles.greeting}>Hello,</Text>
-              <Text style={styles.userName}>{userName}! 👋</Text>
+              <Text style={styles.greeting}>Hello!</Text>
+              <Text style={styles.userName}>{userName} 👋</Text>
             </View>
           </View>
           <Pressable

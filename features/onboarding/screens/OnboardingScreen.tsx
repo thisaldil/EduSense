@@ -37,12 +37,12 @@ export function OnboardingScreen() {
     if (next < onboardingSlides.length) {
       listRef.current?.scrollToIndex({ index: next, animated: true });
     } else {
-      router.replace("/auth/signup");
+      router.replace("/welcome");
     }
   };
 
   const skip = () => {
-    router.replace("/auth/signup");
+    router.replace("/welcome");
   };
 
   const renderItem: ListRenderItem<OnboardingSlide> = ({ item }) => (
