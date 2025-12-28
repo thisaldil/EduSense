@@ -69,36 +69,30 @@ export default function RootLayout() {
               name="onboarding/index"
               options={{ headerShown: false }}
             />
-            <Stack.Screen name="welcome" options={{ headerShown: false }} />
-            <Stack.Screen name="auth/signup" options={{ headerShown: false }} />
-            <Stack.Screen name="auth/signin" options={{ headerShown: false }} />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="new-lesson" options={{ headerShown: false }} />
+            <Stack.Screen name="welcome" options={{ headerShown: true }} />
+            <Stack.Screen name="auth/signup" options={{ headerShown: true }} />
+            <Stack.Screen name="auth/signin" options={{ headerShown: true }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: true }} />
+            <Stack.Screen name="new-lesson" options={{ headerShown: true }} />
             <Stack.Screen
               name="lesson-player"
-              options={{ headerShown: false }}
+              options={{ headerShown: true }}
             />
-            <Stack.Screen name="quiz" options={{ headerShown: false }} />
-            <Stack.Screen name="quiz-result" options={{ headerShown: false }} />
-            <Stack.Screen name="quiz-review" options={{ headerShown: false }} />
-            <Stack.Screen
-              name="quiz-loading"
-              options={{ headerShown: false }}
-            />
+            <Stack.Screen name="quiz" options={{ headerShown: true }} />
+            <Stack.Screen name="quiz-result" options={{ headerShown: true }} />
+            <Stack.Screen name="quiz-review" options={{ headerShown: true }} />
+            <Stack.Screen name="quiz-loading" options={{ headerShown: true }} />
             <Stack.Screen
               name="concept-explore"
-              options={{ headerShown: false }}
+              options={{ headerShown: true }}
             />
             <Stack.Screen
               name="concept-playground"
-              options={{ headerShown: false }}
+              options={{ headerShown: true }}
             />
-            <Stack.Screen name="processing" options={{ headerShown: false }} />
-            <Stack.Screen name="settings" options={{ headerShown: false }} />
-            <Stack.Screen
-              name="edit-profile"
-              options={{ headerShown: false }}
-            />
+            <Stack.Screen name="processing" options={{ headerShown: true }} />
+            <Stack.Screen name="settings" options={{ headerShown: true }} />
+            <Stack.Screen name="edit-profile" options={{ headerShown: true }} />
             <Stack.Screen
               name="modal"
               options={{ presentation: "modal", title: "Modal" }}

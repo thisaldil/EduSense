@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Animated,
@@ -32,6 +32,7 @@ const FUN_FACTS = [
 type Stage = (typeof STAGES)[number];
 
 export default function ProcessingScreen() {
+  const params = useLocalSearchParams<{ lesson_id?: string }>();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [factIndex, setFactIndex] = useState(0);
   const pulseAnim = new Animated.Value(1);
@@ -77,12 +78,15 @@ export default function ProcessingScreen() {
   useEffect(() => {
     if (currentIndex === STAGES.length - 1) {
       const timeout = setTimeout(() => {
-        router.push("/lesson-player");
+        router.push({
+          pathname: "/lesson-player",
+          params: { lesson_id: params.lesson_id },
+        });
       }, 1200);
 
       return () => clearTimeout(timeout);
     }
-  }, [currentIndex]);
+  }, [currentIndex, params.lesson_id]);
 
   return (
     <SafeAreaView style={styles.safeArea}>

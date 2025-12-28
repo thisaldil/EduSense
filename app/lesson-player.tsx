@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Video } from "expo-av";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Pressable,
@@ -64,6 +64,7 @@ const CONCEPTS: Concept[] = [
 ] as const;
 
 export default function LessonPlayerScreen() {
+  const params = useLocalSearchParams<{ lesson_id?: string }>();
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioOn, setAudioOn] = useState(true);
   const [hapticOn, setHapticOn] = useState(true);
@@ -263,9 +264,16 @@ export default function LessonPlayerScreen() {
 
             <Pressable
               style={[styles.navButton, isLastStep && styles.navButtonPrimary]}
-              onPress={() =>
-                isLastStep ? router.push("/concept-explore") : goToNext()
-              }
+              onPress={() => {
+                if (isLastStep) {
+                  router.push({
+                    pathname: "/concept-explore",
+                    params: { lesson_id: params.lesson_id },
+                  });
+                } else {
+                  goToNext();
+                }
+              }}
             >
               <Text
                 style={[

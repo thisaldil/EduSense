@@ -16,7 +16,8 @@ export default function QuizLoadingScreen() {
     score?: string;
     correct?: string;
     total?: string;
-    results?: string;
+    quiz_id?: string;
+    lesson_id?: string;
   }>();
 
   useEffect(() => {
@@ -27,14 +28,14 @@ export default function QuizLoadingScreen() {
           score: params.score,
           correct: params.correct,
           total: params.total,
-          results:
-            typeof params.results === "string" ? params.results : undefined,
+          quiz_id: params.quiz_id,
+          lesson_id: params.lesson_id,
         },
       });
     }, 2200);
 
     return () => clearTimeout(timeout);
-  }, [params.score, params.correct, params.total, params.results]);
+  }, [params.score, params.correct, params.total, params.quiz_id, params.lesson_id]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
