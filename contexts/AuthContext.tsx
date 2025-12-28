@@ -28,6 +28,7 @@ interface AuthContextType {
   login: (credentials: LoginRequest) => Promise<void>;
   register: (data: RegisterRequest) => Promise<void>;
   logout: () => Promise<void>;
+  updateUser: (user: User) => void;
   error: string | null;
   clearError: () => void;
 }
@@ -117,6 +118,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const handleUpdateUser = (updatedUser: User) => {
+    setUser(updatedUser);
+  };
+
   const clearError = () => {
     setError(null);
   };
@@ -128,6 +133,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     login: handleLogin,
     register: handleRegister,
     logout: handleLogout,
+    updateUser: handleUpdateUser,
     error,
     clearError,
   };

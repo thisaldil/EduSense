@@ -13,6 +13,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Image } from "expo-image";
 
 import { Colors, Typography } from "@/constants/theme";
 import { useAuth } from "@/contexts/AuthContext";
@@ -215,7 +216,15 @@ export default function HomeScreen() {
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <View style={styles.avatarCircle}>
-              <Text style={styles.avatarText}>{userInitial}</Text>
+              {user?.avatar_url ? (
+                <Image
+                  source={{ uri: user.avatar_url }}
+                  style={styles.avatarImage}
+                  contentFit="cover"
+                />
+              ) : (
+                <Text style={styles.avatarText}>{userInitial}</Text>
+              )}
             </View>
             <View>
               <Text style={styles.greeting}>Hello!</Text>
@@ -360,6 +369,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.teal,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
   },
   avatarText: {
     ...Typography.h3,
