@@ -267,7 +267,7 @@ export default function LessonPlayerScreen() {
               onPress={() => {
                 if (isLastStep) {
                   router.push({
-                    pathname: "/concept-explore",
+                    pathname: "/lessons/concept-explore",
                     params: { lesson_id: params.lesson_id },
                   });
                 } else {

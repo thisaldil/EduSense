@@ -57,7 +57,7 @@ export default function NewLessonScreen() {
 
       // Navigate to processing screen with lesson_id
       router.push({
-        pathname: "/processing",
+        pathname: "/lessons/processing",
         params: { lesson_id: lesson.id },
       });
     } catch (error: any) {

@@ -50,8 +50,19 @@ export interface QuizAnswer {
   answer_index: number;
 }
 
+export interface CognitiveLoadFeatures {
+  answerChanges: number;
+  currentErrorStreak: number;
+  errors: number;
+  idleGapsOverThreshold: number;
+  responseTimeVariability: number;
+  completionTime: number;
+  avgResponseTime: number;
+}
+
 export interface SubmitQuizRequest {
   answers: QuizAnswer[];
+  cognitive_load_features?: CognitiveLoadFeatures;
 }
 
 export interface QuizSubmission {
@@ -63,6 +74,8 @@ export interface QuizSubmission {
   correct_count: number;
   total_questions: number;
   completed_at: string;
+  cognitive_load?: "Low" | "Medium" | "High";
+  cognitive_load_confidence?: number;
 }
 
 export interface QuizResults {
@@ -73,6 +86,8 @@ export interface QuizResults {
   correct_count: number;
   total_questions: number;
   completed_at: string;
+  cognitive_load?: "Low" | "Medium" | "High";
+  cognitive_load_confidence?: number;
 }
 
 /**
@@ -125,4 +140,22 @@ export const submitQuiz = async (
  */
 export const getQuizResults = async (quizId: string): Promise<QuizResults> => {
   return apiGet<QuizResults>(`${API_ENDPOINTS.QUIZZES}/${quizId}/results`);
+};
+
+/**
+ * Validate a single quiz answer (for immediate feedback)
+ * This endpoint may not exist in the backend - it's a proposed addition
+ */
+export const validateQuizAnswer = async (
+  quizId: string,
+  questionId: string,
+  answerIndex: number
+): Promise<{ correct_index: number; is_correct: boolean }> => {
+  return apiPost<{ correct_index: number; is_correct: boolean }>(
+    `${API_ENDPOINTS.QUIZZES}/${quizId}/validate-answer`,
+    {
+      question_id: questionId,
+      answer_index: answerIndex,
+    }
+  );
 };

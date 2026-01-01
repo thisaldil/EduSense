@@ -112,7 +112,7 @@ export default function HomeScreen() {
 
   const handleLessonPress = async (lesson: LessonCard) => {
     await playTapFeedback();
-    router.push("/lesson-player");
+    router.push("/lessons/lesson-player");
   };
 
   const renderContinueCard = ({ item }: { item: LessonCard }) => {
@@ -268,7 +268,7 @@ export default function HomeScreen() {
           ]}
           onPress={async () => {
             await playTapFeedback();
-            router.push("/new-lesson");
+            router.push("/lessons/new-lesson");
           }}
         >
           <ImageBackground

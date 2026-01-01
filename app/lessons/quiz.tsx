@@ -15,13 +15,22 @@ import {
 } from "react-native";
 
 import { Colors, Typography } from "@/constants/theme";
-import { getQuiz, submitQuiz, Question } from "@/services/lessons";
-
-type QuestionWithCorrect = Question & {
-  correctIndex: number;
-};
+import {
+  getQuiz,
+  submitQuiz,
+  Question,
+  CognitiveLoadFeatures,
+} from "@/services/lessons";
 
 type Mode = "idle" | "correct" | "incorrect";
+
+interface QuestionTiming {
+  questionId: string;
+  startTime: number;
+  responseTime: number;
+  answerChanges: number;
+  lastSelectedIndex: number | null;
+}
 
 export default function QuizScreen() {
   const params = useLocalSearchParams<{
@@ -33,7 +42,9 @@ export default function QuizScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [mode, setMode] = useState<Mode>("idle");
-  const [correctCount, setCorrectCount] = useState(0);
+  const [answeredQuestions, setAnsweredQuestions] = useState<Set<string>>(
+    new Set()
+  );
   const [answers, setAnswers] = useState<
     {
       id: string;
@@ -41,11 +52,25 @@ export default function QuizScreen() {
       options: string[];
       correctIndex: number;
       selectedIndex: number | null;
+      isCorrect?: boolean;
     }[]
   >([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [correctAnswers, setCorrectAnswers] = useState<Record<string, number>>(
+    {}
+  );
 
-  // Fetch quiz on mount
+  // Cognitive load tracking
+  const [quizStartTime] = useState<number>(Date.now());
+  const [questionTimings, setQuestionTimings] = useState<
+    Map<string, QuestionTiming>
+  >(new Map());
+  const [answerChanges, setAnswerChanges] = useState<number>(0);
+  const [currentErrorStreak, setCurrentErrorStreak] = useState<number>(0);
+  const [totalErrors, setTotalErrors] = useState<number>(0);
+  const [idleGapsOverThreshold, setIdleGapsOverThreshold] = useState<number>(0);
+  const IDLE_THRESHOLD_MS = 30000; // 30 seconds
+
   useEffect(() => {
     const fetchQuiz = async () => {
       if (!params.quiz_id) {
@@ -58,6 +83,35 @@ export default function QuizScreen() {
       try {
         const quiz = await getQuiz(params.quiz_id);
         setQuestions(quiz.questions);
+
+        const correctAnswersMap: Record<string, number> = {};
+        quiz.questions.forEach((q: any) => {
+          const correctIdx = q.correct_index ?? q.correctIndex;
+          if (correctIdx !== undefined && correctIdx !== null) {
+            correctAnswersMap[q.id] = correctIdx;
+          }
+        });
+
+        setCorrectAnswers(correctAnswersMap);
+
+        // Initialize timing for first question
+        if (quiz.questions.length > 0) {
+          const firstQuestion = quiz.questions[0];
+          setQuestionTimings(
+            new Map([
+              [
+                firstQuestion.id,
+                {
+                  questionId: firstQuestion.id,
+                  startTime: Date.now(),
+                  responseTime: 0,
+                  answerChanges: 0,
+                  lastSelectedIndex: null,
+                },
+              ],
+            ])
+          );
+        }
       } catch (error: any) {
         Alert.alert("Error", error.message || "Failed to load quiz.");
         router.back();
@@ -69,6 +123,42 @@ export default function QuizScreen() {
     fetchQuiz();
   }, [params.quiz_id]);
 
+  // Track question start time when moving to next question
+  useEffect(() => {
+    if (questions.length === 0 || currentIndex >= questions.length) return;
+
+    const question = questions[currentIndex];
+    if (!question || questionTimings.has(question.id)) return;
+
+    const previousQuestion = questions[currentIndex - 1];
+    const now = Date.now();
+
+    // Check for idle gap (time between questions)
+    if (previousQuestion) {
+      const prevTiming = questionTimings.get(previousQuestion.id);
+      if (prevTiming) {
+        const timeSinceLastQuestion =
+          now - (prevTiming.startTime + prevTiming.responseTime);
+        if (timeSinceLastQuestion > IDLE_THRESHOLD_MS) {
+          setIdleGapsOverThreshold((prev) => prev + 1);
+        }
+      }
+    }
+
+    setQuestionTimings(
+      (prev) =>
+        new Map(
+          prev.set(question.id, {
+            questionId: question.id,
+            startTime: now,
+            responseTime: 0,
+            answerChanges: 0,
+            lastSelectedIndex: null,
+          })
+        )
+    );
+  }, [currentIndex, questions]);
+
   const currentQuestion = useMemo(
     () => questions[currentIndex],
     [questions, currentIndex]
@@ -78,14 +168,27 @@ export default function QuizScreen() {
   const questionNumber = currentIndex + 1;
   const progressPercent = Math.round((questionNumber / totalQuestions) * 100);
 
-  const upsertAnswer = (nextSelectedIndex: number | null) => {
+  const upsertAnswer = (
+    nextSelectedIndex: number | null,
+    correctIndex?: number,
+    isCorrect?: boolean
+  ) => {
     const entry = {
       id: currentQuestion.id,
       question: currentQuestion.question,
       options: currentQuestion.options,
-      correctIndex: -1, // Not available in student view, will be determined by API
+      correctIndex: correctIndex ?? correctAnswers[currentQuestion.id] ?? -1,
       selectedIndex: nextSelectedIndex,
+      isCorrect,
     };
+
+    if (correctIndex !== undefined) {
+      setCorrectAnswers((prev) => ({
+        ...prev,
+        [currentQuestion.id]: correctIndex,
+      }));
+    }
+
     setAnswers((prev) => {
       const existingIndex = prev.findIndex((a) => a.id === entry.id);
       if (existingIndex >= 0) {
@@ -100,15 +203,139 @@ export default function QuizScreen() {
 
   const onSelectOption = (index: number) => {
     if (mode !== "idle") return;
+
+    // Track answer changes
+    const timing = questionTimings.get(currentQuestion.id);
+    if (
+      timing &&
+      timing.lastSelectedIndex !== null &&
+      timing.lastSelectedIndex !== index
+    ) {
+      setAnswerChanges((prev) => prev + 1);
+      setQuestionTimings((prev) => {
+        const newMap = new Map(prev);
+        const currentTiming = newMap.get(currentQuestion.id);
+        if (currentTiming) {
+          newMap.set(currentQuestion.id, {
+            ...currentTiming,
+            answerChanges: currentTiming.answerChanges + 1,
+            lastSelectedIndex: index,
+          });
+        }
+        return newMap;
+      });
+    } else if (timing) {
+      // First selection for this question
+      setQuestionTimings((prev) => {
+        const newMap = new Map(prev);
+        const currentTiming = newMap.get(currentQuestion.id);
+        if (currentTiming) {
+          newMap.set(currentQuestion.id, {
+            ...currentTiming,
+            lastSelectedIndex: index,
+          });
+        }
+        return newMap;
+      });
+    }
+
     setSelectedIndex(index);
   };
 
-  const onSubmit = () => {
-    if (selectedIndex === null) return;
-    // We don't know the correct answer until we submit, so just mark as answered
-    setMode("correct"); // We'll show correct/incorrect after submission
-    upsertAnswer(selectedIndex);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  const onSubmit = async () => {
+    if (selectedIndex === null) {
+      Alert.alert(
+        "Please select an answer",
+        "You must select an option before submitting."
+      );
+      return;
+    }
+
+    if (answeredQuestions.has(currentQuestion.id)) {
+      return;
+    }
+
+    const correctIndex = correctAnswers[currentQuestion.id];
+
+    if (correctIndex === undefined || correctIndex === null) {
+      Alert.alert("Error", "Cannot validate answer. Correct answer not found.");
+      return;
+    }
+
+    const isCorrect = selectedIndex === correctIndex;
+
+    // Update response time for current question
+    const now = Date.now();
+    setQuestionTimings((prev) => {
+      const newMap = new Map(prev);
+      const currentTiming = newMap.get(currentQuestion.id);
+      if (currentTiming) {
+        newMap.set(currentQuestion.id, {
+          ...currentTiming,
+          responseTime: now - currentTiming.startTime,
+        });
+      }
+      return newMap;
+    });
+
+    // Track errors and error streaks
+    if (!isCorrect) {
+      setTotalErrors((prev) => prev + 1);
+      setCurrentErrorStreak((prev) => prev + 1);
+    } else {
+      setCurrentErrorStreak(0);
+    }
+
+    upsertAnswer(selectedIndex, correctIndex, isCorrect);
+    setMode(isCorrect ? "correct" : "incorrect");
+    setAnsweredQuestions((prev) => new Set(prev).add(currentQuestion.id));
+
+    if (isCorrect) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } else {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
+  };
+
+  const calculateCognitiveLoadFeatures = (): CognitiveLoadFeatures => {
+    const completionTime = Date.now() - quizStartTime;
+
+    // Calculate response times
+    const responseTimes: number[] = [];
+    questionTimings.forEach((timing) => {
+      if (timing.responseTime > 0) {
+        responseTimes.push(timing.responseTime);
+      }
+    });
+
+    // Calculate average response time
+    const avgResponseTime =
+      responseTimes.length > 0
+        ? responseTimes.reduce((sum, time) => sum + time, 0) /
+          responseTimes.length
+        : 0;
+
+    // Calculate response time variability (coefficient of variation)
+    let responseTimeVariability = 0;
+    if (responseTimes.length > 1 && avgResponseTime > 0) {
+      const variance =
+        responseTimes.reduce(
+          (sum, time) => sum + Math.pow(time - avgResponseTime, 2),
+          0
+        ) / responseTimes.length;
+      const standardDeviation = Math.sqrt(variance);
+      responseTimeVariability = (standardDeviation / avgResponseTime) * 100;
+    }
+
+    return {
+      answerChanges,
+      currentErrorStreak,
+      errors: totalErrors,
+      idleGapsOverThreshold,
+      responseTimeVariability,
+      completionTime,
+      avgResponseTime,
+    };
   };
 
   const onNext = async () => {
@@ -118,7 +345,6 @@ export default function QuizScreen() {
       setSelectedIndex(null);
       setMode("idle");
     } else {
-      // Submit all answers to API
       setIsSubmitting(true);
       try {
         if (!params.quiz_id) {
@@ -130,15 +356,18 @@ export default function QuizScreen() {
           return [...existing, entry];
         })();
 
+        const cognitiveLoadFeatures = calculateCognitiveLoadFeatures();
+
         const submission = await submitQuiz(params.quiz_id, {
           answers: allAnswers.map((a) => ({
             question_id: a.id,
             answer_index: a.selectedIndex!,
           })),
+          cognitive_load_features: cognitiveLoadFeatures,
         });
 
         router.push({
-          pathname: "/quiz-loading",
+          pathname: "/lessons/quiz-loading",
           params: {
             score: String(Math.round(submission.score)),
             correct: String(submission.correct_count),
@@ -155,15 +384,12 @@ export default function QuizScreen() {
     }
   };
 
-  const onSkip = () => {
-    onNext();
-  };
-
   const questionTypeLabel =
     currentQuestion?.type === "multiple" ? "Multiple choice" : "True / False";
 
+  const isQuestionAnswered = answeredQuestions.has(currentQuestion?.id);
   const primaryLabel =
-    mode === "idle"
+    mode === "idle" && !isQuestionAnswered
       ? "Submit Answer"
       : currentIndex < totalQuestions - 1
       ? "Next Question"
@@ -244,28 +470,33 @@ export default function QuizScreen() {
           <View style={styles.optionsList}>
             {currentQuestion.options.map((option, index) => {
               const isSelected = selectedIndex === index;
-              // Note: We don't show correct/incorrect until after submission
-              // For now, just show selected state
-              const isCorrect = false; // Will be determined after submission
-              const isIncorrect = false; // Will be determined after submission
+              const correctIndex = correctAnswers[currentQuestion.id];
+              const showFeedback =
+                mode !== "idle" && typeof correctIndex === "number";
+              const isCorrectOption = showFeedback && correctIndex === index;
+              const isWrongSelected =
+                showFeedback && isSelected && index !== correctIndex;
 
               let borderColor = "#E5E7EB";
               let backgroundColor = "#FFFFFF";
               let radioFill = "transparent";
 
-              if (isSelected && mode === "idle") {
+              if (mode === "idle" && isSelected) {
                 borderColor = Colors.deepBlue;
                 backgroundColor = "rgba(19,164,236,0.06)";
                 radioFill = Colors.deepBlue;
               }
-              if (isCorrect) {
-                borderColor = "#22C55E";
-                backgroundColor = "rgba(34,197,94,0.08)";
-                radioFill = "#22C55E";
-              } else if (isIncorrect) {
+
+              if (isWrongSelected) {
                 borderColor = "#EF4444";
                 backgroundColor = "rgba(239,68,68,0.08)";
                 radioFill = "#EF4444";
+              }
+
+              if (isCorrectOption) {
+                borderColor = "#22C55E";
+                backgroundColor = "rgba(34,197,94,0.08)";
+                radioFill = "#22C55E";
               }
 
               return (
@@ -276,6 +507,7 @@ export default function QuizScreen() {
                   <Pressable
                     style={styles.optionPressable}
                     onPress={() => onSelectOption(index)}
+                    disabled={mode !== "idle"}
                   >
                     <View style={styles.radioOuter}>
                       <View
@@ -286,40 +518,20 @@ export default function QuizScreen() {
                       />
                     </View>
                     <Text style={styles.optionText}>{option}</Text>
-                    {isCorrect && (
+                    {isCorrectOption && (
                       <Ionicons
                         name="checkmark-circle"
                         size={20}
                         color="#22C55E"
                       />
                     )}
-                    {isIncorrect && (
+                    {isWrongSelected && (
                       <Ionicons name="close-circle" size={20} color="#EF4444" />
                     )}
                   </Pressable>
                 </Animated.View>
               );
             })}
-          </View>
-
-          {/* Hint buttons */}
-          <View style={styles.hintsRow}>
-            <Pressable style={styles.hintButton}>
-              <Ionicons
-                name="eye-outline"
-                size={16}
-                color={Colors.light.textSecondary}
-              />
-              <Text style={styles.hintText}>Visual hint</Text>
-            </Pressable>
-            <Pressable style={styles.hintButton}>
-              <Ionicons
-                name="volume-high-outline"
-                size={16}
-                color={Colors.light.textSecondary}
-              />
-              <Text style={styles.hintText}>Audio hint</Text>
-            </Pressable>
           </View>
         </ScrollView>
 
@@ -332,9 +544,12 @@ export default function QuizScreen() {
                 ? { opacity: 0.5 }
                 : {},
             ]}
-            onPress={mode === "idle" ? onSubmit : onNext}
+            onPress={mode === "idle" && !isQuestionAnswered ? onSubmit : onNext}
             disabled={
-              (selectedIndex === null && mode === "idle") || isSubmitting
+              (selectedIndex === null &&
+                mode === "idle" &&
+                !isQuestionAnswered) ||
+              isSubmitting
             }
           >
             {isSubmitting ? (
@@ -349,9 +564,6 @@ export default function QuizScreen() {
                 />
               </>
             )}
-          </Pressable>
-          <Pressable style={styles.skipButton} onPress={onSkip}>
-            <Text style={styles.skipText}>Skip this question</Text>
           </Pressable>
         </View>
       </View>
@@ -503,26 +715,6 @@ const styles = StyleSheet.create({
     ...Typography.body,
     color: Colors.light.text,
   },
-  hintsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 10,
-    marginTop: 16,
-  },
-  hintButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: "#E5E7EB",
-  },
-  hintText: {
-    ...Typography.small,
-    color: Colors.light.textSecondary,
-  },
   footer: {
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -546,14 +738,6 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     ...Typography.button,
     color: "#FFFFFF",
-  },
-  skipButton: {
-    alignSelf: "center",
-    paddingVertical: 6,
-  },
-  skipText: {
-    ...Typography.small,
-    color: Colors.light.textSecondary,
   },
   loadingContainer: {
     flex: 1,

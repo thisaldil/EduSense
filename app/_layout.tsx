@@ -73,24 +73,24 @@ export default function RootLayout() {
             <Stack.Screen name="auth/signup" options={{ headerShown: true }} />
             <Stack.Screen name="auth/signin" options={{ headerShown: true }} />
             <Stack.Screen name="(tabs)" options={{ headerShown: true }} />
-            <Stack.Screen name="new-lesson" options={{ headerShown: true }} />
+            <Stack.Screen name="lessons/new-lesson" options={{ headerShown: true }} />
             <Stack.Screen
-              name="lesson-player"
+              name="lessons/lesson-player"
               options={{ headerShown: true }}
             />
-            <Stack.Screen name="quiz" options={{ headerShown: true }} />
-            <Stack.Screen name="quiz-result" options={{ headerShown: true }} />
-            <Stack.Screen name="quiz-review" options={{ headerShown: true }} />
-            <Stack.Screen name="quiz-loading" options={{ headerShown: true }} />
+            <Stack.Screen name="lessons/quiz" options={{ headerShown: true }} />
+            <Stack.Screen name="lessons/quiz-result" options={{ headerShown: true }} />
+            <Stack.Screen name="lessons/quiz-review" options={{ headerShown: true }} />
+            <Stack.Screen name="lessons/quiz-loading" options={{ headerShown: true }} />
             <Stack.Screen
-              name="concept-explore"
+              name="lessons/concept-explore"
               options={{ headerShown: true }}
             />
             <Stack.Screen
-              name="concept-playground"
+              name="lessons/concept-playground"
               options={{ headerShown: true }}
             />
-            <Stack.Screen name="processing" options={{ headerShown: true }} />
+            <Stack.Screen name="lessons/processing" options={{ headerShown: true }} />
             <Stack.Screen name="settings" options={{ headerShown: true }} />
             <Stack.Screen name="edit-profile" options={{ headerShown: true }} />
             <Stack.Screen

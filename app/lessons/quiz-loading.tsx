@@ -23,7 +23,7 @@ export default function QuizLoadingScreen() {
   useEffect(() => {
     const timeout = setTimeout(() => {
       router.replace({
-        pathname: "/quiz-result",
+        pathname: "/lessons/quiz-result",
         params: {
           score: params.score,
           correct: params.correct,
@@ -35,7 +35,13 @@ export default function QuizLoadingScreen() {
     }, 2200);
 
     return () => clearTimeout(timeout);
-  }, [params.score, params.correct, params.total, params.quiz_id, params.lesson_id]);
+  }, [
+    params.score,
+    params.correct,
+    params.total,
+    params.quiz_id,
+    params.lesson_id,
+  ]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -128,5 +134,3 @@ const styles = StyleSheet.create({
     maxWidth: 320,
   },
 });
-
-

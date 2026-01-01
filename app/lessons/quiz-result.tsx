@@ -28,6 +28,11 @@ export default function QuizResultScreen() {
   const [score, setScore] = useState(Number(params.score ?? 0));
   const [correct, setCorrect] = useState(Number(params.correct ?? 0));
   const [total, setTotal] = useState(Number(params.total ?? 10));
+  const [cognitiveLoad, setCognitiveLoad] = useState<
+    "Low" | "Medium" | "High" | null
+  >(null);
+  const [cognitiveLoadConfidence, setCognitiveLoadConfidence] =
+    useState<number | null>(null);
 
   // Fetch results from API if quiz_id is available
   useEffect(() => {
@@ -43,8 +48,13 @@ export default function QuizResultScreen() {
         setScore(Math.round(results.score));
         setCorrect(results.correct_count);
         setTotal(results.total_questions);
+        if (results.cognitive_load) {
+          setCognitiveLoad(results.cognitive_load);
+        }
+        if (results.cognitive_load_confidence !== undefined) {
+          setCognitiveLoadConfidence(results.cognitive_load_confidence);
+        }
       } catch (error: any) {
-        console.error("Failed to fetch quiz results:", error);
         // Fall back to params if API fails
       } finally {
         setIsLoading(false);
@@ -60,14 +70,16 @@ export default function QuizResultScreen() {
     return "low";
   }, [score]);
 
-  // Calculate cognitive load status (for now based on score, will come from model later)
-  const cognitiveLoad = useMemo<"low" | "medium" | "high">(() => {
-    // For now, inverse relationship: lower score = higher cognitive load
-    // This will be replaced with actual model prediction
-    if (score >= 80) return "low"; // High score = low cognitive load
+  // Use actual cognitive load from API, fallback to score-based calculation if not available
+  const cognitiveLoadDisplay = useMemo<"low" | "medium" | "high">(() => {
+    if (cognitiveLoad) {
+      return cognitiveLoad.toLowerCase() as "low" | "medium" | "high";
+    }
+    // Fallback: inverse relationship if API doesn't provide cognitive load
+    if (score >= 80) return "low";
     if (score >= 50) return "medium";
-    return "high"; // Low score = high cognitive load
-  }, [score]);
+    return "high";
+  }, [cognitiveLoad, score]);
 
   const headline = useMemo(() => {
     if (level === "high") return "Great job! ✅";
@@ -80,7 +92,7 @@ export default function QuizResultScreen() {
   const handleReview = () => {
     if (params.quiz_id) {
       router.push({
-        pathname: "/quiz-review",
+        pathname: "/lessons/quiz-review",
         params: {
           quiz_id: params.quiz_id,
           lesson_id: params.lesson_id,
@@ -105,7 +117,7 @@ export default function QuizResultScreen() {
           style: "default",
           onPress: () => {
             router.replace({
-              pathname: "/lesson-player",
+              pathname: "/lessons/lesson-player",
               params: { lesson_id: params.lesson_id },
             });
           },
@@ -115,7 +127,7 @@ export default function QuizResultScreen() {
   };
 
   const handleContinue = () => {
-    router.push("/concept-playground");
+    router.push("/lessons/concept-playground");
   };
 
   return (
@@ -187,25 +199,27 @@ export default function QuizResultScreen() {
                   <View
                     style={[
                       styles.cognitiveLoadBadge,
-                      cognitiveLoad === "low" && styles.cognitiveLoadBadgeLow,
-                      cognitiveLoad === "medium" &&
+                      cognitiveLoadDisplay === "low" &&
+                        styles.cognitiveLoadBadgeLow,
+                      cognitiveLoadDisplay === "medium" &&
                         styles.cognitiveLoadBadgeMedium,
-                      cognitiveLoad === "high" && styles.cognitiveLoadBadgeHigh,
+                      cognitiveLoadDisplay === "high" &&
+                        styles.cognitiveLoadBadgeHigh,
                     ]}
                   >
                     <Ionicons
                       name={
-                        cognitiveLoad === "low"
+                        cognitiveLoadDisplay === "low"
                           ? "checkmark-circle"
-                          : cognitiveLoad === "medium"
+                          : cognitiveLoadDisplay === "medium"
                           ? "alert-circle"
                           : "warning"
                       }
                       size={24}
                       color={
-                        cognitiveLoad === "low"
+                        cognitiveLoadDisplay === "low"
                           ? "#22C55E"
-                          : cognitiveLoad === "medium"
+                          : cognitiveLoadDisplay === "medium"
                           ? "#F59E0B"
                           : "#EF4444"
                       }
@@ -213,27 +227,36 @@ export default function QuizResultScreen() {
                     <Text
                       style={[
                         styles.cognitiveLoadText,
-                        cognitiveLoad === "low" && styles.cognitiveLoadTextLow,
-                        cognitiveLoad === "medium" &&
+                        cognitiveLoadDisplay === "low" &&
+                          styles.cognitiveLoadTextLow,
+                        cognitiveLoadDisplay === "medium" &&
                           styles.cognitiveLoadTextMedium,
-                        cognitiveLoad === "high" &&
+                        cognitiveLoadDisplay === "high" &&
                           styles.cognitiveLoadTextHigh,
                       ]}
                     >
-                      {cognitiveLoad === "low"
+                      {cognitiveLoadDisplay === "low"
                         ? "Low"
-                        : cognitiveLoad === "medium"
+                        : cognitiveLoadDisplay === "medium"
                         ? "Medium"
                         : "High"}
                     </Text>
                   </View>
                 </View>
 
+                {cognitiveLoadConfidence !== null && (
+                  <View style={styles.confidenceBadge}>
+                    <Text style={styles.confidenceText}>
+                      Confidence: {Math.round(cognitiveLoadConfidence * 100)}%
+                    </Text>
+                  </View>
+                )}
+
                 <View style={styles.cognitiveLoadInfo}>
                   <Text style={styles.cognitiveLoadInfoText}>
-                    {cognitiveLoad === "low"
+                    {cognitiveLoadDisplay === "low"
                       ? "You're processing this material comfortably. Great job! 🎉"
-                      : cognitiveLoad === "medium"
+                      : cognitiveLoadDisplay === "medium"
                       ? "You're putting in moderate effort. Keep practicing! 💪"
                       : "This concept is challenging. Take breaks and review more. 📚"}
                   </Text>
@@ -491,6 +514,19 @@ const styles = StyleSheet.create({
   },
   cognitiveLoadTextHigh: {
     color: "#EF4444",
+  },
+  confidenceBadge: {
+    marginTop: 8,
+    alignSelf: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: Colors.light.backgroundSecondary,
+  },
+  confidenceText: {
+    ...Typography.small,
+    color: Colors.light.textSecondary,
+    fontSize: 11,
   },
   cognitiveLoadInfo: {
     marginTop: 4,

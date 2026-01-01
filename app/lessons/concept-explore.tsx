@@ -52,7 +52,7 @@ export default function ConceptExploreScreen() {
 
       // Navigate to quiz screen with quiz data
       router.push({
-        pathname: "/quiz",
+        pathname: "/lessons/quiz",
         params: {
           quiz_id: quiz.id,
           lesson_id: lessonId,

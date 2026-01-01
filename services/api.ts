@@ -3,10 +3,10 @@
  * Handles all HTTP requests to the backend
  */
 
-import { API_BASE_URL, API_ENDPOINTS } from '@/config/api';
-import * as SecureStore from 'expo-secure-store';
+import { API_BASE_URL, API_ENDPOINTS } from "@/config/api";
+import * as SecureStore from "expo-secure-store";
 
-const TOKEN_KEY = 'auth_token';
+const TOKEN_KEY = "auth_token";
 
 export interface ApiError {
   message: string;
@@ -21,7 +21,7 @@ export const getStoredToken = async (): Promise<string | null> => {
   try {
     return await SecureStore.getItemAsync(TOKEN_KEY);
   } catch (error) {
-    console.error('Error reading token:', error);
+    console.error("Error reading token:", error);
     return null;
   }
 };
@@ -33,7 +33,7 @@ export const storeToken = async (token: string): Promise<void> => {
   try {
     await SecureStore.setItemAsync(TOKEN_KEY, token);
   } catch (error) {
-    console.error('Error storing token:', error);
+    console.error("Error storing token:", error);
     throw error;
   }
 };
@@ -45,7 +45,7 @@ export const removeStoredToken = async (): Promise<void> => {
   try {
     await SecureStore.deleteItemAsync(TOKEN_KEY);
   } catch (error) {
-    console.error('Error removing token:', error);
+    console.error("Error removing token:", error);
   }
 };
 
@@ -59,13 +59,13 @@ export const apiRequest = async <T = any>(
   const token = await getStoredToken();
 
   const headers: HeadersInit = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
     ...options.headers,
   };
 
   // Add authentication token if available
   if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+    headers["Authorization"] = `Bearer ${token}`;
   }
 
   const url = `${API_BASE_URL}${endpoint}`;
@@ -80,7 +80,7 @@ export const apiRequest = async <T = any>(
 
     if (!response.ok) {
       const error: ApiError = {
-        message: data.detail || data.message || 'An error occurred',
+        message: data.detail || data.message || "An error occurred",
         status: response.status,
         errors: data.errors,
       };
@@ -89,11 +89,12 @@ export const apiRequest = async <T = any>(
 
     return data;
   } catch (error) {
-    if (error instanceof Error && 'message' in error && 'status' in error) {
+    if (error instanceof Error && "message" in error && "status" in error) {
       throw error as ApiError;
     }
     throw {
-      message: error instanceof Error ? error.message : 'Network error occurred',
+      message:
+        error instanceof Error ? error.message : "Network error occurred",
       status: undefined,
     } as ApiError;
   }
@@ -103,18 +104,15 @@ export const apiRequest = async <T = any>(
  * GET request
  */
 export const apiGet = <T = any>(endpoint: string): Promise<T> => {
-  return apiRequest<T>(endpoint, { method: 'GET' });
+  return apiRequest<T>(endpoint, { method: "GET" });
 };
 
 /**
  * POST request
  */
-export const apiPost = <T = any>(
-  endpoint: string,
-  data?: any
-): Promise<T> => {
+export const apiPost = <T = any>(endpoint: string, data?: any): Promise<T> => {
   return apiRequest<T>(endpoint, {
-    method: 'POST',
+    method: "POST",
     body: data ? JSON.stringify(data) : undefined,
   });
 };
@@ -124,7 +122,7 @@ export const apiPost = <T = any>(
  */
 export const apiPut = <T = any>(endpoint: string, data?: any): Promise<T> => {
   return apiRequest<T>(endpoint, {
-    method: 'PUT',
+    method: "PUT",
     body: data ? JSON.stringify(data) : undefined,
   });
 };
@@ -133,6 +131,5 @@ export const apiPut = <T = any>(endpoint: string, data?: any): Promise<T> => {
  * DELETE request
  */
 export const apiDelete = <T = any>(endpoint: string): Promise<T> => {
-  return apiRequest<T>(endpoint, { method: 'DELETE' });
+  return apiRequest<T>(endpoint, { method: "DELETE" });
 };
-
