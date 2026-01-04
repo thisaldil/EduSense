@@ -8,8 +8,10 @@ import {
   Text,
   View,
 } from "react-native";
+import { Image } from "expo-image";
 
 import { Colors, Typography } from "@/constants/theme";
+import { useAuth } from "@/contexts/AuthContext";
 
 const achievements = [
   { id: "a1", label: "First Lesson", color: "#FEF3C7" },
@@ -26,7 +28,9 @@ const recentActivity = [
 ];
 
 export default function ProfileScreen() {
-  const userName = "Student";
+  const { user } = useAuth();
+  const userName = user?.first_name || user?.username || "User";
+  const userInitial = userName.charAt(0).toUpperCase();
 
   const handleSignOut = () => {
     // TODO: clear auth state and redirect to sign in
@@ -59,7 +63,15 @@ export default function ProfileScreen() {
         <View style={styles.cover} />
         <View style={styles.avatarWrapper}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarInitial}>{userName[0]}</Text>
+            {user?.avatar_url ? (
+              <Image
+                source={{ uri: user.avatar_url }}
+                style={styles.avatarImage}
+                contentFit="cover"
+              />
+            ) : (
+              <Text style={styles.avatarInitial}>{userInitial}</Text>
+            )}
           </View>
         </View>
 
@@ -225,6 +237,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 3,
     borderColor: Colors.light.backgroundSecondary,
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
   },
   avatarInitial: {
     ...Typography.h2,

@@ -1,7 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   Image,
   Pressable,
   SafeAreaView,
@@ -12,6 +14,7 @@ import {
 } from "react-native";
 
 import { Colors, Typography } from "@/constants/theme";
+import { generateQuiz, getQuiz, Quiz } from "@/services/lessons";
 
 type TabKey = "explanation" | "examples" | "related";
 
@@ -25,10 +28,45 @@ const difficultyLevels = ["Simplify", "Balanced", "Advanced"] as const;
 type Difficulty = (typeof difficultyLevels)[number];
 
 export default function ConceptExploreScreen() {
+  const params = useLocalSearchParams<{ lesson_id?: string }>();
   const [activeTab, setActiveTab] = useState<TabKey>("explanation");
   const [difficulty, setDifficulty] = useState<Difficulty>("Balanced");
+  const [isLoadingQuiz, setIsLoadingQuiz] = useState(false);
 
   const conceptName = "Newton's First Law";
+  const lessonId = params.lesson_id;
+
+  const handleTestYourself = async () => {
+    if (!lessonId) {
+      Alert.alert(
+        "Error",
+        "Lesson ID is missing. Please go back and try again."
+      );
+      return;
+    }
+
+    setIsLoadingQuiz(true);
+    try {
+      // Try to generate quiz (this will create a new quiz or return existing one)
+      const quiz = await generateQuiz({ lesson_id: lessonId });
+
+      // Navigate to quiz screen with quiz data
+      router.push({
+        pathname: "/lessons/quiz",
+        params: {
+          quiz_id: quiz.id,
+          lesson_id: lessonId,
+        },
+      });
+    } catch (error: any) {
+      Alert.alert(
+        "Error",
+        error.message || "Failed to generate quiz. Please try again."
+      );
+    } finally {
+      setIsLoadingQuiz(false);
+    }
+  };
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -227,11 +265,21 @@ export default function ConceptExploreScreen() {
         {/* Bottom Quiz button */}
         <View style={styles.footer}>
           <Pressable
-            style={styles.quizButton}
-            onPress={() => router.push("/quiz")}
+            style={[
+              styles.quizButton,
+              (isLoadingQuiz || !lessonId) && styles.quizButtonDisabled,
+            ]}
+            onPress={handleTestYourself}
+            disabled={isLoadingQuiz || !lessonId}
           >
-            <Ionicons name="help-buoy-outline" size={20} color="#FFFFFF" />
-            <Text style={styles.quizButtonText}>Test yourself</Text>
+            {isLoadingQuiz ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Ionicons name="help-buoy-outline" size={20} color="#FFFFFF" />
+            )}
+            <Text style={styles.quizButtonText}>
+              {isLoadingQuiz ? "Loading..." : "Test yourself"}
+            </Text>
           </Pressable>
         </View>
       </View>
@@ -466,5 +514,8 @@ const styles = StyleSheet.create({
     ...Typography.bodyMedium,
     color: Colors.light.background,
     fontWeight: "600",
+  },
+  quizButtonDisabled: {
+    opacity: 0.6,
   },
 });

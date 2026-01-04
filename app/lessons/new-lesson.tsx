@@ -2,6 +2,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -12,6 +14,7 @@ import {
 } from "react-native";
 
 import { Colors, Typography } from "@/constants/theme";
+import { createLesson } from "@/services/lessons";
 
 const SUBJECT_CHIPS = [
   { id: "science", label: "Science", icon: "flask", color: "#E8F5E9" },
@@ -25,11 +28,46 @@ type SubjectId = (typeof SUBJECT_CHIPS)[number]["id"];
 export default function NewLessonScreen() {
   const [selectedSubject, setSelectedSubject] = useState<SubjectId>("science");
   const [text, setText] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const maxChars = 2000;
 
   const handlePaste = async () => {
     // Implement paste functionality
     // For now, just a placeholder
+  };
+
+  const handleGenerate = async () => {
+    if (text.length === 0) return;
+
+    setIsLoading(true);
+    try {
+      // Map subject IDs to proper subject names
+      const subjectMap: Record<SubjectId, string> = {
+        science: "Science",
+        physics: "Physics",
+        literature: "Literature",
+        math: "Math",
+      };
+
+      const lesson = await createLesson({
+        title: `Lesson: ${subjectMap[selectedSubject]}`,
+        subject: subjectMap[selectedSubject],
+        content: text,
+      });
+
+      // Navigate to processing screen with lesson_id
+      router.push({
+        pathname: "/lessons/processing",
+        params: { lesson_id: lesson.id },
+      });
+    } catch (error: any) {
+      Alert.alert(
+        "Error",
+        error.message || "Failed to create lesson. Please try again."
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -207,14 +245,19 @@ Example: 'Photosynthesis is how plants make their food using sunlight, water, an
           style={({ pressed }) => [
             styles.generateButton,
             { transform: [{ scale: pressed ? 0.98 : 1 }] },
+            (text.length === 0 || isLoading) && styles.generateButtonDisabled,
           ]}
-          onPress={() => router.push("/processing")}
-          disabled={text.length === 0}
+          onPress={handleGenerate}
+          disabled={text.length === 0 || isLoading}
         >
           <View style={styles.buttonContent}>
-            <Ionicons name="rocket" size={24} color="#FFFFFF" />
+            {isLoading ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Ionicons name="rocket" size={24} color="#FFFFFF" />
+            )}
             <Text style={styles.generateButtonText}>
-              Generate Sensory Lesson
+              {isLoading ? "Creating Lesson..." : "Generate Sensory Lesson"}
             </Text>
           </View>
           <View style={styles.buttonShine} />
@@ -546,6 +589,9 @@ const styles = StyleSheet.create({
     height: "100%",
     backgroundColor: "rgba(255, 255, 255, 0.2)",
     transform: [{ skewX: "-20deg" }],
+  },
+  generateButtonDisabled: {
+    opacity: 0.6,
   },
 
   // Tips Card

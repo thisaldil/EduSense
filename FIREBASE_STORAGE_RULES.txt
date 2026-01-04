@@ -1,0 +1,20 @@
+// Copy and paste these rules into Firebase Console > Storage > Rules
+
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Allow anyone to upload avatars (your FastAPI backend validates users)
+    match /avatars/{userId}/{fileName} {
+      allow read: if true; // Anyone can read
+      allow write: if request.resource.size < 5 * 1024 * 1024 // Max 5MB
+                    && request.resource.contentType.matches('image/.*'); // Only images
+    }
+
+    // Allow anyone to upload lesson content (your FastAPI backend validates users)
+    match /lessons/{userId}/{fileName} {
+      allow read: if true; // Anyone can read
+      allow write: if request.resource.size < 10 * 1024 * 1024; // Max 10MB
+    }
+  }
+}
+
