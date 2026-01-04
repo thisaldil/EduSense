@@ -53,6 +53,8 @@ export interface QuizAnswer {
 export interface CognitiveLoadFeatures {
   answerChanges: number;
   currentErrorStreak: number;
+  totalScore: number;
+  accuracyRate: number;
   errors: number;
   idleGapsOverThreshold: number;
   responseTimeVariability: number;
