@@ -297,7 +297,9 @@ export default function QuizScreen() {
     }
   };
 
-  const calculateCognitiveLoadFeatures = (): CognitiveLoadFeatures => {
+  const calculateCognitiveLoadFeatures = (
+    finalAnswers: typeof answers
+  ): CognitiveLoadFeatures => {
     const completionTime = Date.now() - quizStartTime;
 
     // Calculate response times
@@ -315,21 +317,30 @@ export default function QuizScreen() {
           responseTimes.length
         : 0;
 
-    // Calculate response time variability (coefficient of variation)
+    // Calculate response time variability (standard deviation in milliseconds)
     let responseTimeVariability = 0;
-    if (responseTimes.length > 1 && avgResponseTime > 0) {
+    if (responseTimes.length > 1) {
       const variance =
         responseTimes.reduce(
           (sum, time) => sum + Math.pow(time - avgResponseTime, 2),
           0
         ) / responseTimes.length;
       const standardDeviation = Math.sqrt(variance);
-      responseTimeVariability = (standardDeviation / avgResponseTime) * 100;
+      responseTimeVariability = standardDeviation;
     }
+
+    // Calculate total score (number of correct answers)
+    const totalScore = finalAnswers.filter((a) => a.isCorrect === true).length;
+
+    // Calculate accuracy rate (0.0 to 1.0)
+    const totalQuestions = finalAnswers.length || questions.length;
+    const accuracyRate = totalQuestions > 0 ? totalScore / totalQuestions : 0;
 
     return {
       answerChanges,
       currentErrorStreak,
+      totalScore,
+      accuracyRate,
       errors: totalErrors,
       idleGapsOverThreshold,
       responseTimeVariability,
@@ -356,7 +367,8 @@ export default function QuizScreen() {
           return [...existing, entry];
         })();
 
-        const cognitiveLoadFeatures = calculateCognitiveLoadFeatures();
+        const cognitiveLoadFeatures =
+          calculateCognitiveLoadFeatures(allAnswers);
 
         const submission = await submitQuiz(params.quiz_id, {
           answers: allAnswers.map((a) => ({
