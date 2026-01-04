@@ -5,6 +5,7 @@ import React, { useEffect, useState } from "react";
 import {
   FlatList,
   ImageBackground,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -90,17 +91,29 @@ const SUBJECT_COLORS: Record<Subject, string> = {
 };
 
 export default function HomeScreen() {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const userName = user?.first_name || user?.username || "User";
   const userInitial = userName.charAt(0).toUpperCase();
   const [search, setSearch] = useState("");
 
-  // Redirect to welcome if not authenticated
+  // Redirect to welcome if not authenticated (wait for auth to finish loading)
   useEffect(() => {
+    if (isLoading) return;
+
     if (!isAuthenticated) {
-      router.replace("/welcome");
+      // Use setTimeout to ensure navigation is ready, especially on web
+      const timer = setTimeout(() => {
+        router.replace("/welcome");
+      }, Platform.OS === "web" ? 150 : 50);
+
+      return () => clearTimeout(timer);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isLoading]);
+
+  // Show loading or nothing while checking auth or redirecting
+  if (isLoading || !isAuthenticated) {
+    return null;
+  }
 
   const playTapFeedback = async () => {
     try {

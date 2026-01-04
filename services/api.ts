@@ -4,9 +4,14 @@
  */
 
 import { API_BASE_URL, API_ENDPOINTS } from "@/config/api";
+import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 
 const TOKEN_KEY = "auth_token";
+const WEB_TOKEN_KEY = "edusense_auth_token";
+
+// Check if we're on web
+const isWeb = Platform.OS === "web";
 
 export interface ApiError {
   message: string;
@@ -19,9 +24,14 @@ export interface ApiError {
  */
 export const getStoredToken = async (): Promise<string | null> => {
   try {
-    return await SecureStore.getItemAsync(TOKEN_KEY);
+    if (isWeb) {
+      // Use localStorage on web
+      return localStorage.getItem(WEB_TOKEN_KEY);
+    } else {
+      // Use SecureStore on native platforms
+      return await SecureStore.getItemAsync(TOKEN_KEY);
+    }
   } catch (error) {
-    console.error("Error reading token:", error);
     return null;
   }
 };
@@ -31,9 +41,14 @@ export const getStoredToken = async (): Promise<string | null> => {
  */
 export const storeToken = async (token: string): Promise<void> => {
   try {
-    await SecureStore.setItemAsync(TOKEN_KEY, token);
+    if (isWeb) {
+      // Use localStorage on web
+      localStorage.setItem(WEB_TOKEN_KEY, token);
+    } else {
+      // Use SecureStore on native platforms
+      await SecureStore.setItemAsync(TOKEN_KEY, token);
+    }
   } catch (error) {
-    console.error("Error storing token:", error);
     throw error;
   }
 };
@@ -43,9 +58,15 @@ export const storeToken = async (token: string): Promise<void> => {
  */
 export const removeStoredToken = async (): Promise<void> => {
   try {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
+    if (isWeb) {
+      // Use localStorage on web
+      localStorage.removeItem(WEB_TOKEN_KEY);
+    } else {
+      // Use SecureStore on native platforms
+      await SecureStore.deleteItemAsync(TOKEN_KEY);
+    }
   } catch (error) {
-    console.error("Error removing token:", error);
+    // Silently fail
   }
 };
 
