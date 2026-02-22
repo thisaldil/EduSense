@@ -130,6 +130,21 @@ export default function WelcomeScreen() {
                 Create Account
               </Text>
             </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.secondaryWelcomeButton,
+                { opacity: pressed ? 0.8 : 1 },
+              ]}
+              onPress={async () => {
+                await playTapFeedback();
+                router.push("/haptics-test");
+              }}
+            >
+              <Text style={styles.secondaryWelcomeButtonText}>
+                Test Haptics
+              </Text>
+            </Pressable>
           </View>
         </View>
       </ScrollView>

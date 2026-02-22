@@ -67,6 +67,14 @@ export interface SubmitQuizRequest {
   cognitive_load_features?: CognitiveLoadFeatures;
 }
 
+/** Cognitive load prediction from backend (e.g. { "Low": 0.05, "Medium": 0.2, "High": 0.75 }) */
+export interface CognitiveLoadScores {
+  Low?: number;
+  Medium?: number;
+  High?: number;
+}
+
+/** Backend may return cognitive_load as string or numeric class (0=Low, 1=Medium, 2=High) */
 export interface QuizSubmission {
   id: string;
   quiz_id: string;
@@ -76,10 +84,12 @@ export interface QuizSubmission {
   correct_count: number;
   total_questions: number;
   completed_at: string;
-  cognitive_load?: "Low" | "Medium" | "High";
+  cognitive_load?: "Low" | "Medium" | "High" | number;
   cognitive_load_confidence?: number;
+  cognitive_load_scores?: CognitiveLoadScores;
 }
 
+/** Backend may return cognitive_load as string ("Low"/"Medium"/"High") or numeric class (0=Low, 1=Medium, 2=High) */
 export interface QuizResults {
   id: string;
   quiz_id: string;
@@ -88,8 +98,9 @@ export interface QuizResults {
   correct_count: number;
   total_questions: number;
   completed_at: string;
-  cognitive_load?: "Low" | "Medium" | "High";
+  cognitive_load?: "Low" | "Medium" | "High" | number;
   cognitive_load_confidence?: number;
+  cognitive_load_scores?: CognitiveLoadScores;
 }
 
 /**
@@ -160,4 +171,33 @@ export const validateQuizAnswer = async (
       answer_index: answerIndex,
     }
   );
+};
+
+/** Optional filters for GET /api/activities */
+export interface GetActivitiesParams {
+  topic?: string;
+  cognitive_load?: "LOW" | "MEDIUM" | "HIGH";
+  activity_type?: "TRUE_FALSE" | "MCQ" | "MATCHING" | "FILL_BLANK_WORD_BANK";
+}
+
+/** Activity type returned by GET /api/activities (re-export from types in app) */
+export type { Activity } from "@/types/activities";
+
+/**
+ * Get activities from the API (Concept Playground).
+ * Query params are optional; omit to get all activities.
+ */
+export const getActivities = async (
+  params?: GetActivitiesParams
+): Promise<import("@/types/activities").Activity[]> => {
+  const base = API_ENDPOINTS.ACTIVITIES;
+  if (!params || Object.keys(params).length === 0) {
+    return apiGet<import("@/types/activities").Activity[]>(base);
+  }
+  const search = new URLSearchParams();
+  if (params.topic) search.set("topic", params.topic);
+  if (params.cognitive_load) search.set("cognitive_load", params.cognitive_load);
+  if (params.activity_type) search.set("activity_type", params.activity_type);
+  const endpoint = `${base}?${search.toString()}`;
+  return apiGet<import("@/types/activities").Activity[]>(endpoint);
 };
