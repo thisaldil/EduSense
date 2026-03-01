@@ -19,7 +19,7 @@ import {
   RegisterRequest,
   LoginRequest,
 } from "@/services/auth";
-import { getStoredToken, getStoredUser, storeUser } from "@/services/api";
+import { getStoredToken, getStoredUser, storeUser, setOnUnauthorized } from "@/services/api";
 
 interface AuthContextType {
   user: User | null;
@@ -55,6 +55,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Check if user is already authenticated on mount
   useEffect(() => {
     checkAuth();
+  }, []);
+
+  // When any API call returns 401, clear user state so UI shows logged out and redirects to login
+  useEffect(() => {
+    setOnUnauthorized(() => setUser(null));
+    return () => setOnUnauthorized(null);
   }, []);
 
   const checkAuth = async () => {

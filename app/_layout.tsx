@@ -11,6 +11,8 @@ import { useEffect } from "react";
 import { Platform, StatusBar as RNStatusBar, View } from "react-native";
 import "react-native-reanimated";
 
+import "@/global.css";
+
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import {
   Inter_400Regular,
@@ -60,7 +62,7 @@ export default function RootLayout() {
           style={{
             flex: 1,
             paddingTop:
-              Platform.OS === "android" ? RNStatusBar.currentHeight ?? 0 : 0,
+              Platform.OS === "android" ? (RNStatusBar.currentHeight ?? 0) : 0,
           }}
         >
           <Stack initialRouteName="splash">
@@ -73,15 +75,27 @@ export default function RootLayout() {
             <Stack.Screen name="auth/signup" options={{ headerShown: true }} />
             <Stack.Screen name="auth/signin" options={{ headerShown: true }} />
             <Stack.Screen name="(tabs)" options={{ headerShown: true }} />
-            <Stack.Screen name="lessons/new-lesson" options={{ headerShown: true }} />
+            <Stack.Screen
+              name="lessons/new-lesson"
+              options={{ headerShown: true }}
+            />
             <Stack.Screen
               name="lessons/lesson-player"
               options={{ headerShown: true }}
             />
             <Stack.Screen name="lessons/quiz" options={{ headerShown: true }} />
-            <Stack.Screen name="lessons/quiz-result" options={{ headerShown: true }} />
-            <Stack.Screen name="lessons/quiz-review" options={{ headerShown: true }} />
-            <Stack.Screen name="lessons/quiz-loading" options={{ headerShown: true }} />
+            <Stack.Screen
+              name="lessons/quiz-result"
+              options={{ headerShown: true }}
+            />
+            <Stack.Screen
+              name="lessons/quiz-review"
+              options={{ headerShown: true }}
+            />
+            <Stack.Screen
+              name="lessons/quiz-loading"
+              options={{ headerShown: true }}
+            />
             <Stack.Screen
               name="lessons/concept-explore"
               options={{ headerShown: true }}
@@ -90,7 +104,10 @@ export default function RootLayout() {
               name="lessons/concept-playground"
               options={{ headerShown: true }}
             />
-            <Stack.Screen name="lessons/processing" options={{ headerShown: true }} />
+            <Stack.Screen
+              name="lessons/processing"
+              options={{ headerShown: true }}
+            />
             <Stack.Screen name="settings" options={{ headerShown: true }} />
             <Stack.Screen name="edit-profile" options={{ headerShown: true }} />
             <Stack.Screen

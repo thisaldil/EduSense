@@ -121,6 +121,20 @@ export const removeStoredUser = async (): Promise<void> => {
   }
 };
 
+/** Called when backend returns 401 so the app can clear auth state and redirect to login */
+let onUnauthorizedCallback: (() => void) | null = null;
+
+export function setOnUnauthorized(callback: (() => void) | null): void {
+  onUnauthorizedCallback = callback;
+}
+
+/** Clear stored auth (token + user). Call on 401 so UI and storage stay in sync. */
+export const clearStoredAuth = async (): Promise<void> => {
+  await removeStoredToken();
+  await removeStoredUser();
+  onUnauthorizedCallback?.();
+};
+
 /**
  * Make an API request with authentication
  */
@@ -130,9 +144,9 @@ export const apiRequest = async <T = any>(
 ): Promise<T> => {
   const token = await getStoredToken();
 
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...options.headers,
+    ...(options.headers as Record<string, string>),
   };
 
   // Add authentication token if available
@@ -151,6 +165,10 @@ export const apiRequest = async <T = any>(
     const data = await response.json();
 
     if (!response.ok) {
+      // Backend rejected the token (expired, invalid, etc.) – clear auth so user can sign in again
+      if (response.status === 401) {
+        await clearStoredAuth();
+      }
       const error: ApiError = {
         message: data.detail || data.message || "An error occurred",
         status: response.status,
