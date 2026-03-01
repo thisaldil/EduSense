@@ -222,7 +222,18 @@ export default function ConceptExploreScreen() {
                 Newton&apos;s First Law behaves in motion.
               </Text>
             </View>
-            <Pressable style={styles.experienceButton}>
+            <Pressable
+              style={styles.experienceButton}
+              onPress={() => {
+                if (lessonId) {
+                  router.push({
+                    pathname: "/lessons/lesson-player",
+                    params: { lesson_id: lessonId },
+                  });
+                }
+              }}
+              disabled={!lessonId}
+            >
               <Ionicons name="sparkles-outline" size={18} color="#FFFFFF" />
               <Text style={styles.experienceButtonText}>Play demo</Text>
             </Pressable>

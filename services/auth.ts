@@ -4,7 +4,7 @@
  */
 
 import { API_ENDPOINTS } from '@/config/api';
-import { apiPost, storeToken, removeStoredToken } from './api';
+import { apiPost, storeToken, storeUser, removeStoredToken, removeStoredUser } from './api';
 
 export interface RegisterRequest {
   email: string;
@@ -67,6 +67,9 @@ export const register = async (
   if (response.access_token) {
     await storeToken(response.access_token);
   }
+  if (response.user) {
+    await storeUser(response.user);
+  }
   
   return response;
 };
@@ -84,6 +87,9 @@ export const login = async (data: LoginRequest): Promise<LoginResponse> => {
   if (response.access_token) {
     await storeToken(response.access_token);
   }
+  if (response.user) {
+    await storeUser(response.user);
+  }
   
   return response;
 };
@@ -99,8 +105,9 @@ export const logout = async (): Promise<void> => {
     // Ignore errors on logout endpoint
   }
   
-  // Always remove the token from storage
+  // Always remove the token and user from storage
   await removeStoredToken();
+  await removeStoredUser();
 };
 
 /**

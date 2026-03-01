@@ -97,10 +97,6 @@ export default function RootLayout() {
               name="modal"
               options={{ presentation: "modal", title: "Modal" }}
             />
-          <Stack.Screen
-            name="haptics-test"
-            options={{ title: "Haptics Test" }}
-          />
           </Stack>
         </View>
         <ExpoStatusBar style="auto" />

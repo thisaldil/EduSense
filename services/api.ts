@@ -9,6 +9,8 @@ import * as SecureStore from "expo-secure-store";
 
 const TOKEN_KEY = "auth_token";
 const WEB_TOKEN_KEY = "edusense_auth_token";
+const USER_KEY = "auth_user";
+const WEB_USER_KEY = "edusense_auth_user";
 
 // Check if we're on web
 const isWeb = Platform.OS === "web";
@@ -66,6 +68,55 @@ export const removeStoredToken = async (): Promise<void> => {
       await SecureStore.deleteItemAsync(TOKEN_KEY);
     }
   } catch (error) {
+    // Silently fail
+  }
+};
+
+/**
+ * Get stored user (for session restoration after reload)
+ */
+export const getStoredUser = async <T = unknown>(): Promise<T | null> => {
+  try {
+    let raw: string | null;
+    if (isWeb) {
+      raw = localStorage.getItem(WEB_USER_KEY);
+    } else {
+      raw = await SecureStore.getItemAsync(USER_KEY);
+    }
+    if (!raw) return null;
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Store user (for session restoration after reload)
+ */
+export const storeUser = async (user: unknown): Promise<void> => {
+  try {
+    const raw = JSON.stringify(user);
+    if (isWeb) {
+      localStorage.setItem(WEB_USER_KEY, raw);
+    } else {
+      await SecureStore.setItemAsync(USER_KEY, raw);
+    }
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * Remove stored user
+ */
+export const removeStoredUser = async (): Promise<void> => {
+  try {
+    if (isWeb) {
+      localStorage.removeItem(WEB_USER_KEY);
+    } else {
+      await SecureStore.deleteItemAsync(USER_KEY);
+    }
+  } catch {
     // Silently fail
   }
 };

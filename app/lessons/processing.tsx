@@ -79,7 +79,7 @@ export default function ProcessingScreen() {
     if (currentIndex === STAGES.length - 1) {
       const timeout = setTimeout(() => {
         router.push({
-          pathname: "/lessons/lesson-player",
+          pathname: "/lessons/concept-explore",
           params: { lesson_id: params.lesson_id },
         });
       }, 1200);
