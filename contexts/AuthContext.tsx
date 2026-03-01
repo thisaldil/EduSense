@@ -19,7 +19,7 @@ import {
   RegisterRequest,
   LoginRequest,
 } from "@/services/auth";
-import { getStoredToken } from "@/services/api";
+import { getStoredToken, getStoredUser, storeUser } from "@/services/api";
 
 interface AuthContextType {
   user: User | null;
@@ -61,11 +61,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       const token = await getStoredToken();
       if (token) {
-        // Optionally, verify the token by fetching user data
-        // For now, we'll just set the user from stored data if available
-        // You can implement a "me" endpoint to fetch current user
-        // const userData = await apiGet<User>(API_ENDPOINTS.USERS + '/me');
-        // setUser(userData);
+        const storedUserData = await getStoredUser<User>();
+        if (storedUserData) {
+          setUser(storedUserData);
+        }
       }
     } catch (err) {
       console.error("Auth check failed:", err);
@@ -120,6 +119,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const handleUpdateUser = (updatedUser: User) => {
     setUser(updatedUser);
+    storeUser(updatedUser);
   };
 
   const clearError = () => {

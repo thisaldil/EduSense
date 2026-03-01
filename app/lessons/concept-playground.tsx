@@ -12,7 +12,7 @@ import {
 } from "react-native";
 
 import { Colors, Typography } from "@/constants/theme";
-import { getActivities } from "@/services/lessons";
+import { getActivities, getLessonActivities } from "@/services/lessons";
 import type {
   Activity,
   CognitiveLoad,
@@ -58,9 +58,20 @@ function shuffle<T>(arr: T[]): T[] {
 type ViewMode = "list" | "activity" | "result";
 
 export default function ConceptPlaygroundScreen() {
-  const params = useLocalSearchParams<{ cognitive_load?: string }>();
+  const params = useLocalSearchParams<{
+    lesson_id?: string;
+    cognitive_load?: string;
+    activity_type?: string;
+  }>();
+  const lessonId = params.lesson_id ?? null;
   const initialCognitiveLoad = (params.cognitive_load?.toUpperCase() ?? null) as
     | CognitiveLoad
+    | null;
+  const initialActivityType = (params.activity_type?.toUpperCase() ?? null) as
+    | "TRUE_FALSE"
+    | "MCQ"
+    | "MATCHING"
+    | "FILL_BLANK_WORD_BANK"
     | null;
 
   const [viewMode, setViewMode] = useState<ViewMode>("list");
@@ -69,6 +80,12 @@ export default function ConceptPlaygroundScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [inferredCognitiveLoad, setInferredCognitiveLoad] =
     useState<CognitiveLoad | null>(initialCognitiveLoad);
+  const [filterCognitiveLoad, setFilterCognitiveLoad] = useState<CognitiveLoad | null>(
+    initialCognitiveLoad
+  );
+  const [filterActivityType, setFilterActivityType] = useState<
+    "TRUE_FALSE" | "MCQ" | "MATCHING" | "FILL_BLANK_WORD_BANK" | null
+  >(initialActivityType);
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(
     null
   );
@@ -79,7 +96,13 @@ export default function ConceptPlaygroundScreen() {
     setLoading(true);
     setLoadError(null);
     try {
-      const list = await getActivities();
+      const load = filterCognitiveLoad ?? undefined;
+      const type = filterActivityType ?? undefined;
+      const list = lessonId
+        ? await getLessonActivities(lessonId, { cognitive_load: load, activity_type: type })
+        : await getActivities(
+            load || type ? { cognitive_load: load, activity_type: type } : undefined
+          );
       setActivities(list ?? []);
     } catch (e: unknown) {
       const message =
@@ -91,14 +114,14 @@ export default function ConceptPlaygroundScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [lessonId, filterCognitiveLoad, filterActivityType]);
 
   useEffect(() => {
     fetchActivities();
   }, [fetchActivities]);
 
   const suggestedActivities = useMemo(() => {
-    if (inferredCognitiveLoad) {
+    if (inferredCognitiveLoad && !filterCognitiveLoad) {
       return suggestActivitiesByCognitiveLoad(
         activities,
         inferredCognitiveLoad,
@@ -106,7 +129,7 @@ export default function ConceptPlaygroundScreen() {
       );
     }
     return activities;
-  }, [activities, inferredCognitiveLoad]);
+  }, [activities, inferredCognitiveLoad, filterCognitiveLoad]);
 
   const handleStartActivity = (activity: Activity) => {
     setSelectedActivity(activity);
@@ -116,6 +139,7 @@ export default function ConceptPlaygroundScreen() {
   const handleActivityComplete = (scorePercent: number) => {
     const load = inferCognitiveLoadFromScore(scorePercent);
     setInferredCognitiveLoad(load);
+    setFilterCognitiveLoad(load);
     setLastScorePercent(scorePercent);
     const activity = selectedActivity;
     setLastFeedback(
@@ -218,9 +242,13 @@ export default function ConceptPlaygroundScreen() {
             <View style={styles.headerTextBlock}>
               <Text style={styles.headerTitle}>Concept Playground</Text>
               <Text style={styles.headerSubtitle}>
-                {inferredCognitiveLoad
-                  ? `Suggested for ${inferredCognitiveLoad} cognitive load`
-                  : "Activities by topic"}
+                {lessonId
+                  ? filterCognitiveLoad || filterActivityType
+                    ? "Filtered"
+                    : "Activities for this lesson"
+                  : filterCognitiveLoad || filterActivityType
+                  ? "Filtered"
+                  : "All activities"}
               </Text>
             </View>
             <View style={styles.iconCircle} />
@@ -241,10 +269,13 @@ export default function ConceptPlaygroundScreen() {
                 />
               </View>
               <View>
-                <Text style={styles.overviewTitle}>Activities</Text>
+                <Text style={styles.overviewTitle}>
+                  {lessonId ? "Activities for this lesson" : "Activities"}
+                </Text>
                 <Text style={styles.overviewSubtitle}>
-                  Complete activities. Your score defines cognitive load; we
-                  suggest the next activities accordingly.
+                  {lessonId
+                    ? "Activities suggested for this lesson based on your level."
+                    : "Activities suggested for you. Complete an activity to refine suggestions."}
                 </Text>
               </View>
             </View>

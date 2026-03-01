@@ -177,7 +177,10 @@ export default function QuizResultScreen() {
   const handleContinue = () => {
     router.push({
       pathname: "/lessons/concept-playground",
-      params: cognitiveLoad ? { cognitive_load: cognitiveLoad } : undefined,
+      params: {
+        ...(params.lesson_id && { lesson_id: params.lesson_id }),
+        ...(cognitiveLoad && { cognitive_load: cognitiveLoad }),
+      },
     });
   };
 
