@@ -98,7 +98,7 @@ export default function RootLayout() {
             />
             <Stack.Screen
               name="lessons/concept-explore"
-              options={{ headerShown: true }}
+              options={{ headerShown: false }}
             />
             <Stack.Screen
               name="lessons/concept-playground"

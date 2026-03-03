@@ -1,557 +1,401 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Video } from "expo-av";
-import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Pressable,
+  ActivityIndicator,
   SafeAreaView,
   ScrollView,
+  Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { useLocalSearchParams } from "expo-router";
+import { AnimationCanvasNative } from "@/components/AnimationCanvasNative";
+import { exampleUsage } from "@/animation/scriptGenerator";
 
-import { Colors, Typography } from "@/constants/theme";
-
-type Concept = {
-  id: string;
-  title: string;
-  microLabel: string;
-  description: string;
-  audioScript: string;
-  hapticsLabel: string;
+type AnimationScript = {
+  title?: string;
+  duration: number;
+  scenes: {
+    id: string;
+    startTime: number;
+    duration: number;
+    text?: string;
+  }[];
 };
 
-const CONCEPTS: Concept[] = [
-  {
-    id: "gravity-1",
-    title: "What is gravity?",
-    microLabel: "What is gravity?",
-    description:
-      "Gravity is a force that pulls objects toward each other. Here, you’ll feel a gentle pull toward Earth.",
-    audioScript: "Gravity is a force that attracts objects toward each other.",
-    hapticsLabel: "Gentle, continuous vibration for concept introduction.",
-  },
-  {
-    id: "gravity-2",
-    title: "Direction of force",
-    microLabel: "Direction of force",
-    description:
-      "Gravity pulls objects toward the center of the Earth. Notice the downward direction of the force.",
-    audioScript: "Gravity pulls objects toward the center of the Earth.",
-    hapticsLabel: "Pulsing vibration with a downward rhythm.",
-  },
-  {
-    id: "gravity-3",
-    title: "Effect on falling objects",
-    microLabel: "Effect on falling objects",
-    description:
-      "When you drop an object, gravity accelerates it toward the ground. The longer it falls, the faster it moves.",
-    audioScript:
-      "As objects fall, gravity makes them speed up until something stops them.",
-    hapticsLabel: "Increasing pulse speed as the object falls.",
-  },
-  {
-    id: "gravity-4",
-    title: "Strength variation",
-    microLabel: "Strength variation",
-    description:
-      "Gravity is stronger when objects are closer or more massive. Far away from Earth, gravity feels weaker.",
-    audioScript:
-      "Gravity gets weaker with distance, but never fully disappears.",
-    hapticsLabel: "Stronger vibrations near Earth, softer further away.",
-  },
-] as const;
+type LessonAnimationPanelProps = {
+  /** Engine‑ready script (same JSON as web) */
+  script: AnimationScript | null;
+};
 
-export default function LessonPlayerScreen() {
-  const params = useLocalSearchParams<{ lesson_id?: string }>();
+export function LessonAnimationPanel({ script }: LessonAnimationPanelProps) {
   const [isPlaying, setIsPlaying] = useState(false);
-  const [audioOn, setAudioOn] = useState(true);
-  const [hapticOn, setHapticOn] = useState(true);
-  const [autoPlay, setAutoPlay] = useState(false);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [speed, setSpeed] = useState(1);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [currentScene, setCurrentScene] = useState<
+    AnimationScript["scenes"][0] | null
+  >(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const totalSteps = CONCEPTS.length;
-  const currentStep = currentIndex + 1;
-  const progressPercent = Math.round((currentStep / totalSteps) * 100);
-
-  const currentConcept = CONCEPTS[currentIndex];
-  const isLastStep = currentIndex === CONCEPTS.length - 1;
-
-  const videoRef = useRef<Video | null>(null);
-
-  // Auto-advance when playing with autoplay on
+  // NOTE: For now we don’t have a direct time callback from AnimationEngine.
+  // You can later expose one from AnimationCanvasNative and update currentTime there.
   useEffect(() => {
-    if (!isPlaying || !autoPlay) return;
-    const id = setInterval(() => {
-      setCurrentIndex((prev) => (prev < CONCEPTS.length - 1 ? prev + 1 : prev));
-    }, 8000);
-    return () => clearInterval(id);
-  }, [isPlaying, autoPlay]);
+    if (!script) {
+      setIsPlaying(false);
+      setSpeed(1);
+      setCurrentTime(0);
+      setCurrentScene(null);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
 
-  const goToNext = () => {
-    setCurrentIndex((prev) => (prev < CONCEPTS.length - 1 ? prev + 1 : prev));
+    // Simple derived current scene based on currentTime
+    const interval = setInterval(() => {
+      setCurrentTime((t) => {
+        const next = Math.min(script.duration, t + 100);
+        const scene = script.scenes.find(
+          (s) => next >= s.startTime && next < s.startTime + s.duration,
+        );
+        setCurrentScene(scene || null);
+        return next;
+      });
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [script]);
+
+  const handlePlay = () => {
+    setIsPlaying(true);
   };
 
-  const goToPrevious = () => {
-    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : prev));
+  const handlePause = () => {
+    setIsPlaying(false);
   };
 
-  const togglePlay = () => {
-    setIsPlaying((prev) => {
-      const next = !prev;
-      if (next) {
-        videoRef.current?.playAsync();
-      } else {
-        videoRef.current?.pauseAsync();
-      }
-      return next;
-    });
+  const handleReset = () => {
+    setCurrentTime(0);
+    setIsPlaying(true);
+  };
+
+  const handleSpeedChange = (newSpeed: number) => {
+    setSpeed(newSpeed);
+    // TODO: expose setSpeed from AnimationCanvasNative and pass newSpeed down
+  };
+
+  const progress = script
+    ? Math.min(100, (currentTime / script.duration) * 100)
+    : 0;
+
+  const formatTime = (ms: number) => {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.appBar}>
-            <Pressable
-              style={styles.backButton}
-              onPress={() => router.back()}
-              hitSlop={20}
-            >
-              <Ionicons
-                name="chevron-back"
-                size={24}
-                color={Colors.light.text}
-              />
-            </Pressable>
-            <View style={styles.headerTextBlock}>
-              <Text style={styles.headerTitle}>Gravity</Text>
-              <Text style={styles.headerSubtitle}>
-                Step {currentStep} of {totalSteps}
+    <View style={styles.root}>
+      {/* Header Card */}
+      {script && (
+        <View style={styles.headerCard}>
+          <View style={styles.headerTopRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.headerTitle}>
+                {script.title || "Animation"}
+              </Text>
+              {currentScene && currentScene.text ? (
+                <Text style={styles.headerSubtitle}>{currentScene.text}</Text>
+              ) : null}
+            </View>
+            <View style={styles.headerMeta}>
+              <Text style={styles.headerMetaLine}>
+                Scene{" "}
+                {script.scenes.findIndex((s) => s === currentScene) + 1 || 0} /{" "}
+                {script.scenes.length}
+              </Text>
+              <Text style={styles.headerMetaLine}>
+                {formatTime(currentTime)} / {formatTime(script.duration)}
               </Text>
             </View>
           </View>
 
-          <View style={styles.progressContainer}>
-            <View style={styles.progressBar}>
-              <View
-                style={[styles.progressFill, { width: `${progressPercent}%` }]}
-              />
-            </View>
-            <Text style={styles.progressText}>{progressPercent}%</Text>
+          {/* Progress Bar */}
+          <View style={styles.progressBarOuter}>
+            <View
+              style={[styles.progressBarInner, { width: `${progress}%` }]}
+            />
           </View>
         </View>
+      )}
 
-        {/* Main Content */}
-        <View style={styles.main}>
-          {/* Visual Hero - Video */}
-          <View style={styles.visualHero}>
-            <Video
-              ref={videoRef}
-              source={require("@/assets/videos/sample-lesson.mp4")}
-              style={StyleSheet.absoluteFillObject}
-              resizeMode="contain"
-              isLooping
-              shouldPlay={false}
-              isMuted={!audioOn}
-            />
-            <View style={styles.interactiveBadge}>
-              <View style={styles.badgeDot} />
-              <Text style={styles.badgeText}>Interactive demo</Text>
-            </View>
+      {/* Canvas Container */}
+      <View style={styles.canvasCard}>
+        {/* Loading Overlay */}
+        {isLoading && (
+          <View style={styles.overlay}>
+            <ActivityIndicator size="large" color="#667eea" />
+            <Text style={styles.overlayText}>Loading animation...</Text>
           </View>
+        )}
 
-          {/* Play Control */}
-          <Pressable
-            style={[styles.playControl, isPlaying && styles.playControlActive]}
-            onPress={togglePlay}
-          >
-            <Ionicons
-              name={isPlaying ? "pause" : "play"}
-              size={28}
-              color={isPlaying ? "#FFFFFF" : Colors.light.tint}
-            />
-            <Text
-              style={[styles.playLabel, isPlaying && styles.playLabelActive]}
-            >
-              {isPlaying ? "Playing" : "Play Concept"}
-            </Text>
-          </Pressable>
-
-          {/* Sensory Toggles */}
-          <View style={styles.sensoryControls}>
-            <Pressable
-              style={[styles.toggle, hapticOn && styles.toggleActive]}
-              onPress={() => setHapticOn((v) => !v)}
-            >
-              <Ionicons
-                name="pulse"
-                size={20}
-                color={hapticOn ? "#FFFFFF" : Colors.light.textSecondary}
-              />
-              <Text
-                style={[
-                  styles.toggleLabel,
-                  hapticOn && styles.toggleLabelActive,
-                ]}
-              >
-                Haptics
-              </Text>
-            </Pressable>
-
-            <Pressable
-              style={[styles.toggle, audioOn && styles.toggleActive]}
-              onPress={() => setAudioOn((v) => !v)}
-            >
-              <Ionicons
-                name="volume-high"
-                size={20}
-                color={audioOn ? "#FFFFFF" : Colors.light.textSecondary}
-              />
-              <Text
-                style={[
-                  styles.toggleLabel,
-                  audioOn && styles.toggleLabelActive,
-                ]}
-              >
-                Audio
-              </Text>
-            </Pressable>
+        {/* Error State */}
+        {error && (
+          <View style={styles.overlay}>
+            <Text style={styles.errorEmoji}>⚠️</Text>
+            <Text style={styles.errorTitle}>Animation Error</Text>
+            <Text style={styles.errorMessage}>{error}</Text>
           </View>
+        )}
 
-          {/* Concept Details */}
-          <View style={styles.conceptCard}>
-            <Text style={styles.conceptTitle}>{currentConcept.title}</Text>
-            <Text style={styles.conceptDescription}>
-              {currentConcept.description}
+        {/* Empty State */}
+        {!script && !error && !isLoading && (
+          <View style={styles.overlay}>
+            <Text style={styles.emptyEmoji}>🎬</Text>
+            <Text style={styles.emptyTitle}>No Animation Loaded</Text>
+            <Text style={styles.emptyMessage}>
+              Enter a concept to generate an animation
             </Text>
           </View>
+        )}
 
-          {/* Navigation */}
-          <View style={styles.navigation}>
+        {/* Canvas */}
+        {script && !error && (
+          <View style={styles.canvasInner}>
+            <AnimationCanvasNative isPlaying={isPlaying} />
+          </View>
+        )}
+      </View>
+
+      {/* Controls */}
+      {script && (
+        <View style={styles.controlsCard}>
+          <View style={styles.controlsRow}>
             <Pressable
               style={[
-                styles.navButton,
-                currentIndex === 0 && styles.navButtonDisabled,
+                styles.controlButton,
+                isPlaying && styles.controlButtonActive,
               ]}
-              disabled={currentIndex === 0}
-              onPress={goToPrevious}
+              onPress={isPlaying ? handlePause : handlePlay}
             >
-              <Ionicons
-                name="chevron-back"
-                size={20}
-                color={
-                  currentIndex === 0
-                    ? Colors.light.textSecondary
-                    : Colors.light.tint
-                }
-              />
-              <Text
-                style={[
-                  styles.navLabel,
-                  currentIndex === 0 && styles.navLabelDisabled,
-                ]}
-              >
-                Previous
+              <Text style={styles.controlButtonText}>
+                {isPlaying ? "Pause" : "Play"}
               </Text>
             </Pressable>
-
-            <Pressable
-              style={[styles.navButton, isLastStep && styles.navButtonPrimary]}
-              onPress={() => {
-                if (isLastStep) {
-                  router.push({
-                    pathname: "/lessons/concept-explore",
-                    params: { lesson_id: params.lesson_id },
-                  });
-                } else {
-                  goToNext();
-                }
-              }}
-            >
-              <Text
-                style={[
-                  styles.navLabel,
-                  isLastStep ? styles.navLabelPrimary : styles.navLabel,
-                ]}
-              >
-                {isLastStep ? "Finish" : "Next"}
-              </Text>
-              <Ionicons
-                name={isLastStep ? "checkmark" : "chevron-forward"}
-                size={20}
-                color={isLastStep ? "#FFFFFF" : Colors.light.tint}
-              />
+            <Pressable style={styles.controlButton} onPress={handleReset}>
+              <Text style={styles.controlButtonText}>Reset</Text>
             </Pressable>
           </View>
-
-          {/* Auto Play Toggle */}
-          <Pressable
-            style={[styles.autoToggle, autoPlay && styles.autoToggleActive]}
-            onPress={() => setAutoPlay((v) => !v)}
-          >
-            <Ionicons
-              name="repeat-outline"
-              size={20}
-              color={autoPlay ? Colors.light.tint : Colors.light.textSecondary}
-            />
-            <Text
-              style={[styles.autoLabel, autoPlay && styles.autoLabelActive]}
-            >
-              Auto-advance to next
-            </Text>
-          </Pressable>
+          {/* Simple speed presets; you can replace with Slider if you like */}
+          <View style={styles.speedRow}>
+            {[0.5, 1, 1.5].map((s) => (
+              <Pressable
+                key={s}
+                style={[
+                  styles.speedChip,
+                  speed === s && styles.speedChipActive,
+                ]}
+                onPress={() => handleSpeedChange(s)}
+              >
+                <Text
+                  style={[
+                    styles.speedChipText,
+                    speed === s && styles.speedChipTextActive,
+                  ]}
+                >
+                  {s}x
+                </Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
+      )}
+    </View>
+  );
+}
+
+// Default screen component for /lessons/lesson-player route
+export default function LessonPlayerScreen() {
+  const params = useLocalSearchParams<{ lesson_id?: string }>();
+
+  // TODO: use lesson_id and backend to fetch a real script.
+  // For now we use the local example script from scriptGenerator.
+  const demoScript = exampleUsage() as AnimationScript;
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#F3F4F6" }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 24, paddingBottom: 40 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <LessonAnimationPanel script={demoScript} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.light.backgroundSecondary,
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 32,
-  },
-  header: {
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 24,
-    backgroundColor: Colors.light.background,
-  },
-  appBar: {
-    flexDirection: "row",
-    alignItems: "center",
+  root: {
+    width: "100%",
+    flexDirection: "column",
     gap: 16,
   },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.light.backgroundSecondary,
-    alignItems: "center",
-    justifyContent: "center",
+  headerCard: {
+    borderRadius: 16,
+    paddingVertical: 20,
+    paddingHorizontal: 24,
+    backgroundColor: "#667eea",
   },
-  headerTextBlock: {
-    flex: 1,
+  headerTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 12,
   },
   headerTitle: {
-    ...Typography.h2,
-    color: Colors.light.text,
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#FFFFFF",
     marginBottom: 4,
   },
   headerSubtitle: {
-    ...Typography.caption,
-    color: Colors.light.textSecondary,
+    fontSize: 14,
+    color: "rgba(255,255,255,0.9)",
   },
-  progressContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginTop: 16,
+  headerMeta: {
+    alignItems: "flex-end",
   },
-  progressBar: {
-    flex: 1,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: Colors.light.border,
-    overflow: "hidden",
+  headerMetaLine: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.9)",
   },
-  progressFill: {
-    height: "100%",
-    backgroundColor: Colors.light.tint,
-  },
-  progressText: {
-    ...Typography.small,
-    fontWeight: "600",
-    color: Colors.light.tint,
-    minWidth: 40,
-  },
-  main: {
-    paddingHorizontal: 24,
-    gap: 32,
-  },
-  visualHero: {
+  progressBarOuter: {
     width: "100%",
-    aspectRatio: 16 / 9,
-    borderRadius: 24,
-    overflow: "hidden",
-    position: "relative",
-    backgroundColor: "#000000",
-  },
-  video: {
-    width: "100%",
-    height: "100%",
-  },
-  visualIconContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  interactiveBadge: {
-    position: "absolute",
-    top: 16,
-    right: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    backdropFilter: "blur(10px)",
-  },
-  badgeDot: {
-    width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: Colors.brightOrange,
+    backgroundColor: "rgba(255,255,255,0.25)",
+    overflow: "hidden",
+    marginTop: 8,
   },
-  badgeText: {
-    ...Typography.small,
-    color: "#FFFFFF",
-    fontWeight: "500",
+  progressBarInner: {
+    height: "100%",
+    backgroundColor: "#FFFFFF",
   },
-  playControl: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: Colors.light.background,
-    borderWidth: 1,
-    borderColor: Colors.light.border,
-  },
-  playControlActive: {
-    backgroundColor: Colors.light.tint,
-    borderColor: Colors.light.tint,
-  },
-  playLabel: {
-    ...Typography.bodyMedium,
-    color: Colors.light.textSecondary,
-  },
-  playLabelActive: {
-    color: "#FFFFFF",
-    fontWeight: "600",
-  },
-  sensoryControls: {
-    flexDirection: "row",
-    gap: 16,
-  },
-  toggle: {
+  canvasCard: {
     flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: Colors.light.background,
-    borderWidth: 1,
-    borderColor: Colors.light.border,
-  },
-  toggleActive: {
-    backgroundColor: Colors.light.tint,
-    borderColor: Colors.light.tint,
-  },
-  toggleLabel: {
-    ...Typography.label,
-    color: Colors.light.textSecondary,
-  },
-  toggleLabelActive: {
-    color: "#FFFFFF",
-    fontWeight: "600",
-  },
-  conceptCard: {
-    backgroundColor: Colors.light.background,
-    borderRadius: 20,
-    padding: 24,
-    gap: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
-  },
-  conceptTitle: {
-    ...Typography.h3,
-    color: Colors.light.text,
-  },
-  conceptDescription: {
-    ...Typography.body,
-    color: Colors.light.textSecondary,
-    lineHeight: 24,
-  },
-  navigation: {
-    flexDirection: "row",
-    gap: 16,
-  },
-  navButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    height: 52,
+    minHeight: 300,
     borderRadius: 16,
-    backgroundColor: Colors.light.background,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: Colors.light.border,
+    borderColor: "#e1e8ed",
+    overflow: "hidden",
   },
-  navButtonDisabled: {
-    borderColor: Colors.light.border,
-    opacity: 0.5,
+  canvasInner: {
+    flex: 1,
+    backgroundColor: "#f5f7fa",
   },
-  navButtonPrimary: {
-    backgroundColor: Colors.light.tint,
-    borderColor: Colors.light.tint,
-  },
-  navLabel: {
-    ...Typography.bodyMedium,
-    color: Colors.light.textSecondary,
-    fontWeight: "600",
-  },
-  navLabelDisabled: {
-    color: Colors.light.textSecondary,
-  },
-  navLabelPrimary: {
-    color: "#FFFFFF",
-  },
-  autoToggle: {
-    flexDirection: "row",
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-    backgroundColor: Colors.light.background,
+    paddingHorizontal: 24,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    zIndex: 10,
+  },
+  overlayText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: "#656d76",
+  },
+  errorEmoji: {
+    fontSize: 40,
+    marginBottom: 8,
+  },
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#da3633",
+    marginBottom: 4,
+    textAlign: "center",
+  },
+  errorMessage: {
+    fontSize: 14,
+    color: "#656d76",
+    textAlign: "center",
+  },
+  emptyEmoji: {
+    fontSize: 50,
+    marginBottom: 8,
+    opacity: 0.6,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#1f2328",
+    marginBottom: 4,
+    textAlign: "center",
+  },
+  emptyMessage: {
+    fontSize: 14,
+    color: "#656d76",
+    textAlign: "center",
+  },
+  controlsCard: {
+    borderRadius: 12,
+    padding: 16,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: Colors.light.border,
-    alignSelf: "center",
+    borderColor: "#e1e8ed",
   },
-  autoToggleActive: {
-    backgroundColor: Colors.light.backgroundSecondary,
-    borderColor: Colors.light.tint,
+  controlsRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 12,
   },
-  autoLabel: {
-    ...Typography.caption,
-    color: Colors.light.textSecondary,
+  controlButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e1e8ed",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
   },
-  autoLabelActive: {
-    color: Colors.light.tint,
-    fontWeight: "500",
+  controlButtonActive: {
+    backgroundColor: "#667eea",
+    borderColor: "#667eea",
+  },
+  controlButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1f2328",
+  },
+  speedRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8,
+  },
+  speedChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#e1e8ed",
+    backgroundColor: "#FFFFFF",
+  },
+  speedChipActive: {
+    backgroundColor: "#667eea",
+    borderColor: "#667eea",
+  },
+  speedChipText: {
+    fontSize: 13,
+    color: "#1f2328",
+  },
+  speedChipTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "600",
   },
 });

@@ -2,8 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
   Animated,
   Image,
   Pressable,
@@ -15,7 +13,6 @@ import {
 } from "react-native";
 
 import { Colors, Typography } from "@/constants/theme";
-import { generateQuiz } from "@/services/lessons";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type StoryStep = {
@@ -152,33 +149,7 @@ function StoryCard({ step, index }: { step: StoryStep; index: number }) {
 export default function ConceptExploreScreen() {
   const params = useLocalSearchParams<{ lesson_id?: string }>();
   const lessonId = params.lesson_id;
-  const [isLoadingQuiz, setIsLoadingQuiz] = useState(false);
   const [memoryStarsRevealed, setMemoryStarsRevealed] = useState<string[]>([]);
-
-  const handleTestYourself = async () => {
-    if (!lessonId) {
-      Alert.alert(
-        "Oops!",
-        "Something's missing. Please go back and try again.",
-      );
-      return;
-    }
-    setIsLoadingQuiz(true);
-    try {
-      const quiz = await generateQuiz({ lesson_id: lessonId });
-      router.push({
-        pathname: "/lessons/quiz",
-        params: { quiz_id: quiz.id, lesson_id: lessonId },
-      });
-    } catch (error: any) {
-      Alert.alert(
-        "Oops!",
-        error.message || "Couldn't load the quiz. Try again!",
-      );
-    } finally {
-      setIsLoadingQuiz(false);
-    }
-  };
 
   const toggleMemoryTrick = (label: string) => {
     setMemoryStarsRevealed((prev) =>
@@ -346,36 +317,9 @@ export default function ConceptExploreScreen() {
 
         <View style={{ height: 24 }} />
       </ScrollView>
-
-      {/* ── Footer Quiz Button ── */}
-      <View style={styles.footer}>
-        <View style={styles.footerHint}>
-          <Text style={styles.footerHintText}>
-            🌟 Read all 5 story bubbles? You're ready!
-          </Text>
-        </View>
-        <Pressable
-          style={[
-            styles.quizButton,
-            (isLoadingQuiz || !lessonId) && styles.quizButtonDisabled,
-          ]}
-          onPress={handleTestYourself}
-          disabled={isLoadingQuiz || !lessonId}
-        >
-          {isLoadingQuiz ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.quizButtonEmoji}>🏆</Text>
-          )}
-          <Text style={styles.quizButtonText}>
-            {isLoadingQuiz ? "Getting ready…" : "Test yourself!"}
-          </Text>
-        </Pressable>
-      </View>
     </SafeAreaView>
   );
 }
-
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const CARD_WIDTH = 280;
 
@@ -728,48 +672,5 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
     justifyContent: "center",
-  },
-
-  // Footer
-  footer: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 16,
-    backgroundColor: "#fff",
-    borderTopWidth: 1,
-    borderTopColor: "#EFEFEF",
-    gap: 8,
-  },
-  footerHint: {
-    alignItems: "center",
-  },
-  footerHintText: {
-    fontSize: 11,
-    color: "#888",
-    textAlign: "center",
-  },
-  quizButton: {
-    height: 54,
-    borderRadius: 16,
-    backgroundColor: "#FF6B35",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    shadowColor: "#FF6B35",
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 4,
-  },
-  quizButtonEmoji: { fontSize: 20 },
-  quizButtonText: {
-    fontSize: 17,
-    fontWeight: "800",
-    color: "#fff",
-    letterSpacing: 0.3,
-  },
-  quizButtonDisabled: {
-    opacity: 0.5,
   },
 });
