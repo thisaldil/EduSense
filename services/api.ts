@@ -223,3 +223,57 @@ export const apiPut = <T = any>(endpoint: string, data?: any): Promise<T> => {
 export const apiDelete = <T = any>(endpoint: string): Promise<T> => {
   return apiRequest<T>(endpoint, { method: "DELETE" });
 };
+
+/**
+ * Higher-level domain-specific API helpers
+ * These wrap the low-level apiGet/apiPost/etc with concrete endpoints.
+ */
+
+// Neuro-adaptive endpoints (calibration, prediction, adaptive content, animation)
+
+export namespace neuroApi {
+  export interface CalibrationRequest {
+    total_time_seconds: number;
+    total_questions?: number;
+    question_interactions?: unknown[];
+    back_navigations?: number;
+    forward_navigations?: number;
+    answer_changes?: number;
+    [key: string]: unknown;
+  }
+
+  export interface CalibrationResponse {
+    baseline_state: "LOW" | "OPTIMAL" | "OVERLOAD";
+    confidence?: number;
+    baseline_features?: unknown;
+    [key: string]: unknown;
+  }
+
+  export interface PredictRequest {
+    total_time_seconds: number;
+    total_questions?: number;
+    question_interactions?: unknown[];
+    back_navigations?: number;
+    forward_navigations?: number;
+    answer_changes?: number;
+    correct_answers?: number;
+    incorrect_answers?: number;
+    [key: string]: unknown;
+  }
+
+  export interface PredictResponse {
+    state: "LOW" | "OPTIMAL" | "OVERLOAD";
+    confidence: number;
+    [key: string]: unknown;
+  }
+
+  export const calibrate = (body: CalibrationRequest) =>
+    apiPost<CalibrationResponse>("/api/calibration", body);
+
+  export const predict = (body: PredictRequest) =>
+    apiPost<PredictResponse>("/api/v1/predict", body);
+
+  export const nextContent = (body: unknown) =>
+    apiPost("/api/v1/content/next", body);
+}
+

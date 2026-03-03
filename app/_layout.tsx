@@ -25,6 +25,8 @@ import {
   Poppins_700Bold,
 } from "@expo-google-fonts/poppins";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { NeuroStateProvider } from "@/context/NeuroStateContext";
+import { AnalyticsLoggerProvider } from "@/context/AnalyticsLoggerContext";
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -57,67 +59,103 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-        <View
-          style={{
-            flex: 1,
-            paddingTop:
-              Platform.OS === "android" ? (RNStatusBar.currentHeight ?? 0) : 0,
-          }}
-        >
-          <Stack initialRouteName="splash">
-            <Stack.Screen name="splash" options={{ headerShown: false }} />
-            <Stack.Screen
-              name="onboarding/index"
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen name="welcome" options={{ headerShown: true }} />
-            <Stack.Screen name="auth/signup" options={{ headerShown: true }} />
-            <Stack.Screen name="auth/signin" options={{ headerShown: true }} />
-            <Stack.Screen name="(tabs)" options={{ headerShown: true }} />
-            <Stack.Screen
-              name="lessons/new-lesson"
-              options={{ headerShown: true }}
-            />
-            <Stack.Screen
-              name="lessons/lesson-player"
-              options={{ headerShown: true }}
-            />
-            <Stack.Screen name="lessons/quiz" options={{ headerShown: true }} />
-            <Stack.Screen
-              name="lessons/quiz-result"
-              options={{ headerShown: true }}
-            />
-            <Stack.Screen
-              name="lessons/quiz-review"
-              options={{ headerShown: true }}
-            />
-            <Stack.Screen
-              name="lessons/quiz-loading"
-              options={{ headerShown: true }}
-            />
-            <Stack.Screen
-              name="lessons/concept-explore"
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen
-              name="lessons/concept-playground"
-              options={{ headerShown: true }}
-            />
-            <Stack.Screen
-              name="lessons/processing"
-              options={{ headerShown: true }}
-            />
-            <Stack.Screen name="settings" options={{ headerShown: true }} />
-            <Stack.Screen name="edit-profile" options={{ headerShown: true }} />
-            <Stack.Screen
-              name="modal"
-              options={{ presentation: "modal", title: "Modal" }}
-            />
-          </Stack>
-        </View>
-        <ExpoStatusBar style="auto" />
-      </ThemeProvider>
+      <NeuroStateProvider>
+        <AnalyticsLoggerProvider>
+          <ThemeProvider
+            value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
+          >
+            <View
+              style={{
+                flex: 1,
+                paddingTop:
+                  Platform.OS === "android"
+                    ? (RNStatusBar.currentHeight ?? 0)
+                    : 0,
+              }}
+            >
+              <Stack initialRouteName="splash">
+                <Stack.Screen name="splash" options={{ headerShown: false }} />
+                <Stack.Screen
+                  name="onboarding/index"
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen name="welcome" options={{ headerShown: true }} />
+                <Stack.Screen
+                  name="auth/signup"
+                  options={{ headerShown: true }}
+                />
+                <Stack.Screen
+                  name="auth/signin"
+                  options={{ headerShown: true }}
+                />
+                <Stack.Screen name="(tabs)" options={{ headerShown: true }} />
+                <Stack.Screen
+                  name="calibration/index"
+                  options={{ headerShown: true, title: "Brain Sync" }}
+                />
+                <Stack.Screen
+                  name="calibration/task-reading"
+                  options={{ headerShown: true, title: "Reading Center" }}
+                />
+                <Stack.Screen
+                  name="calibration/task-visual"
+                  options={{ headerShown: true, title: "Visual Lab" }}
+                />
+                <Stack.Screen
+                  name="calibration/task-pulse"
+                  options={{ headerShown: true, title: "Pulse Match" }}
+                />
+                <Stack.Screen
+                  name="lessons/new-lesson"
+                  options={{ headerShown: true }}
+                />
+                <Stack.Screen
+                  name="lessons/lesson-player"
+                  options={{ headerShown: true }}
+                />
+                <Stack.Screen
+                  name="lessons/quiz"
+                  options={{ headerShown: true }}
+                />
+                <Stack.Screen
+                  name="lessons/quiz-result"
+                  options={{ headerShown: true }}
+                />
+                <Stack.Screen
+                  name="lessons/quiz-review"
+                  options={{ headerShown: true }}
+                />
+                <Stack.Screen
+                  name="lessons/quiz-loading"
+                  options={{ headerShown: true }}
+                />
+                <Stack.Screen
+                  name="lessons/concept-explore"
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen
+                  name="lessons/concept-playground"
+                  options={{ headerShown: true }}
+                />
+                <Stack.Screen
+                  name="lessons/processing"
+                  options={{ headerShown: true }}
+                />
+                <Stack.Screen name="settings" options={{ headerShown: true }} />
+                <Stack.Screen
+                  name="edit-profile"
+                  options={{ headerShown: true }}
+                />
+                <Stack.Screen
+                  name="modal"
+                  options={{ presentation: "modal", title: "Modal" }}
+                />
+              </Stack>
+            </View>
+            <ExpoStatusBar style="auto" />
+          </ThemeProvider>
+        </AnalyticsLoggerProvider>
+      </NeuroStateProvider>
     </AuthProvider>
   );
 }

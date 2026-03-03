@@ -1,10 +1,21 @@
 import { Tabs } from "expo-router";
 import React from "react";
+import { StyleSheet, View } from "react-native";
 
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { Colors } from "@/constants/theme";
+import { useNeuroState } from "@/context/NeuroStateContext";
 
 export default function TabLayout() {
+  const { state } = useNeuroState();
+
+  const badgeColor =
+    state.currentState === "LOW"
+      ? "#3B82F6"
+      : state.currentState === "OVERLOAD"
+        ? "#F97316"
+        : "#22C55E";
+
   return (
     <Tabs
       screenOptions={{
@@ -28,32 +39,47 @@ export default function TabLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={26} name="house.fill" color={color} />
+            <View style={styles.iconWrapper}>
+              <IconSymbol size={26} name="house.fill" color={color} />
+              <View
+                style={[
+                  styles.neuroDot,
+                  { backgroundColor: badgeColor },
+                ]}
+              />
+            </View>
           ),
         }}
       />
       <Tabs.Screen
         name="library"
         options={{
-          title: "Library",
+          // Learning Theatre – core Transmutation hub
+          title: "Learning Theatre",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={26} name="books.vertical.fill" color={color} />
+            <IconSymbol size={26} name="sparkles" color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="upload"
         options={{
-          title: "Upload",
+          // Activities & Quizzes – validation loop
+          title: "Activities & Quizzes",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={32} name="plus.circle.fill" color={color} />
+            <IconSymbol
+              size={26}
+              name="rectangle.and.pencil.and.ellipsis"
+              color={color}
+            />
           ),
         }}
       />
       <Tabs.Screen
         name="progress"
         options={{
-          title: "Progress",
+          // My Brain Insights – research dashboard
+          title: "My Brain Insights",
           tabBarIcon: ({ color }) => (
             <IconSymbol size={26} name="chart.bar.fill" color={color} />
           ),
@@ -75,3 +101,23 @@ export default function TabLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  iconWrapper: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  neuroDot: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: "#FFFFFF",
+  },
+});
+

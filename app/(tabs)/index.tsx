@@ -17,6 +17,7 @@ import { Image } from "expo-image";
 
 import { Colors } from "@/constants/theme";
 import { useAuth } from "@/contexts/AuthContext";
+import { useNeuroState } from "@/context/NeuroStateContext";
 
 type Subject = "Physics" | "Biology" | "Cognition" | "Skills";
 
@@ -94,6 +95,7 @@ export default function HomeScreen() {
   const userName = user?.first_name || user?.username || "User";
   const userInitial = userName.charAt(0).toUpperCase();
   const [search, setSearch] = useState("");
+  const { state: neuroState } = useNeuroState();
 
   useEffect(() => {
     if (isLoading) return;
@@ -222,6 +224,20 @@ export default function HomeScreen() {
     );
   };
 
+  const neuroLabel =
+    neuroState.currentState === "LOW"
+      ? "Low · Deep Dive"
+      : neuroState.currentState === "OVERLOAD"
+        ? "High · Simplified"
+        : "Optimal · Balanced";
+
+  const neuroColor =
+    neuroState.currentState === "LOW"
+      ? "#3B82F6"
+      : neuroState.currentState === "OVERLOAD"
+        ? "#F97316"
+        : "#22C55E";
+
   return (
     <SafeAreaView className="flex-1 bg-brand-background">
       <ScrollView
@@ -250,6 +266,15 @@ export default function HomeScreen() {
               <Text className="font-sans-semibold text-xl text-brand-text">
                 {userName} 👋
               </Text>
+              <View className="mt-1 flex-row items-center gap-1.5">
+                <View
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: neuroColor }}
+                />
+                <Text className="text-[11px] text-brand-text-secondary">
+                  Neuro‑State: {neuroLabel}
+                </Text>
+              </View>
             </View>
           </View>
           <Pressable
