@@ -267,6 +267,18 @@ export namespace neuroApi {
     [key: string]: unknown;
   }
 
+  export type CognitiveStateWire = "LOW_LOAD" | "OPTIMAL" | "OVERLOAD";
+
+  export interface TransmuteRequest {
+    text: string;
+    cognitive_state: CognitiveStateWire;
+    session_id?: string;
+  }
+
+  // We keep the response loosely typed to stay aligned with the backend.
+  // The UI can safely introspect the object it receives.
+  export type TransmuteResponse = unknown;
+
   export const calibrate = (body: CalibrationRequest) =>
     apiPost<CalibrationResponse>("/api/calibration", body);
 
@@ -275,5 +287,8 @@ export namespace neuroApi {
 
   export const nextContent = (body: unknown) =>
     apiPost("/api/v1/content/next", body);
+
+  export const transmute = (body: TransmuteRequest) =>
+    apiPost<TransmuteResponse>("/api/v1/transmute", body);
 }
 

@@ -25,6 +25,16 @@ export interface Lesson {
   updated_at: string;
 }
 
+// Transmuted content ingest
+export interface IngestContentRequest {
+  raw_text: string;
+  lesson_id: string | null;
+  session_id?: string;
+}
+
+// Shape is backend-defined and may evolve; we keep it loose.
+export type IngestContentResponse = unknown;
+
 export interface Question {
   id: string;
   type: "multiple" | "truefalse";
@@ -110,6 +120,19 @@ export const createLesson = async (
   data: CreateLessonRequest
 ): Promise<Lesson> => {
   return apiPost<Lesson>(API_ENDPOINTS.LESSONS, data);
+};
+
+/**
+ * Ingest raw lesson text for full NLP + transmutation pipeline.
+ * POST /api/content/ingest
+ */
+export const ingestContent = async (
+  data: IngestContentRequest
+): Promise<IngestContentResponse> => {
+  return apiPost<IngestContentResponse>(
+    `${API_ENDPOINTS.CONTENT}/ingest`,
+    data
+  );
 };
 
 /**

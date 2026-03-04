@@ -14,7 +14,7 @@ import {
 } from "react-native";
 
 import { Colors, Typography } from "@/constants/theme";
-import { createLesson } from "@/services/lessons";
+import { createLesson, ingestContent } from "@/services/lessons";
 
 const SUBJECT_CHIPS = [
   { id: "science", label: "Science", icon: "flask", color: "#E8F5E9" },
@@ -24,6 +24,9 @@ const SUBJECT_CHIPS = [
 ] as const;
 
 type SubjectId = (typeof SUBJECT_CHIPS)[number]["id"];
+
+const generateSessionId = () =>
+  `${Date.now().toString(36)}-${Math.random().toString(16).slice(2)}`;
 
 export default function NewLessonScreen() {
   const [selectedSubject, setSelectedSubject] = useState<SubjectId>("science");
@@ -38,6 +41,8 @@ export default function NewLessonScreen() {
 
   const handleGenerate = async () => {
     if (text.length === 0) return;
+
+    const sessionId = generateSessionId();
 
     setIsLoading(true);
     try {
@@ -55,10 +60,27 @@ export default function NewLessonScreen() {
         content: text,
       });
 
-      // Navigate to processing screen with lesson_id
+      // Fire-and-forget ingest to run the full NLP + transmutation
+      // pipeline for all cognitive states and persist it on the backend.
+      // We don't block the UX on this – if it fails, the student can
+      // still continue into the processing / explore flow.
+      ingestContent({
+        raw_text: text,
+        lesson_id: lesson.id ?? null,
+        session_id: sessionId,
+      }).catch((err) => {
+        console.warn("Failed to ingest lesson content", err);
+      });
+
+      // Navigate to processing screen with lesson_id and raw text so it can
+      // call the transmutation endpoint based on the current cognitive state.
       router.push({
         pathname: "/lessons/processing",
-        params: { lesson_id: lesson.id },
+        params: {
+          lesson_id: lesson.id,
+          raw_text: text,
+          session_id: sessionId,
+        },
       });
     } catch (error: any) {
       Alert.alert(
