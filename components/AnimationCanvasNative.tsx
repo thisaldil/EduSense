@@ -118,9 +118,31 @@ export function AnimationCanvasNative({ isPlaying, script }: Props) {
       getContext: () => ctx as any,
     };
 
+    // Normalise to a logical 800×600 space so the whole scene fits
+    // inside the GLView, even on high‑DPI devices where the backing
+    // buffer is much larger than the visible view.
+    const LOGICAL_WIDTH = 800;
+    const LOGICAL_HEIGHT = 600;
+    const displayWidth = canvas.width || LOGICAL_WIDTH;
+    const displayHeight = canvas.height || LOGICAL_HEIGHT;
+    const scaleX = displayWidth / LOGICAL_WIDTH;
+    const scaleY = displayHeight / LOGICAL_HEIGHT;
+    const scale = Math.min(scaleX, scaleY) || 1;
+
+    // Apply this once; all engine coordinates are now in 800×600 space.
+    ctx.save();
+    ctx.scale(scale, scale);
+
+    const logicalCanvas = {
+      ...canvas,
+      width: LOGICAL_WIDTH,
+      height: LOGICAL_HEIGHT,
+      getContext: () => ctx as any,
+    };
+
     // Use scriptRef.current so we always get the latest script,
     // even if the prop changed between mount and GLView init.
-    const engine = new AnimationEngine(canvas as any, scriptRef.current);
+    const engine = new AnimationEngine(logicalCanvas as any, scriptRef.current);
     engineRef.current = engine;
 
     if (isPlaying) {
