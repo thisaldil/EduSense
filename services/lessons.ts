@@ -25,16 +25,6 @@ export interface Lesson {
   updated_at: string;
 }
 
-// Transmuted content ingest
-export interface IngestContentRequest {
-  raw_text: string;
-  lesson_id: string | null;
-  session_id?: string;
-}
-
-// Shape is backend-defined and may evolve; we keep it loose.
-export type IngestContentResponse = unknown;
-
 export interface Question {
   id: string;
   type: "multiple" | "truefalse";
@@ -120,19 +110,6 @@ export const createLesson = async (
   data: CreateLessonRequest
 ): Promise<Lesson> => {
   return apiPost<Lesson>(API_ENDPOINTS.LESSONS, data);
-};
-
-/**
- * Ingest raw lesson text for full NLP + transmutation pipeline.
- * POST /api/content/ingest
- */
-export const ingestContent = async (
-  data: IngestContentRequest
-): Promise<IngestContentResponse> => {
-  return apiPost<IngestContentResponse>(
-    `${API_ENDPOINTS.CONTENT}/ingest`,
-    data
-  );
 };
 
 /**
@@ -248,4 +225,59 @@ export const getActivities = async (
   if (params.activity_type) search.set("activity_type", params.activity_type);
   const endpoint = `${base}?${search.toString()}`;
   return apiGet<import("@/types/activities").Activity[]>(endpoint);
+};
+
+/**
+ * TransmutedContent document from backend (Member 1).
+ * Matches GET /api/content/transmuted/latest response.
+ */
+export interface TransmutedContentDoc {
+  _id: string;
+  lesson_id: string | null;
+  student_id: string | null;
+  session_id: string | null;
+  topic: string;
+  lesson_title: string;
+  input: {
+    raw_text: string;
+    cognitive_state: "OVERLOAD" | "OPTIMAL" | "LOW_LOAD";
+  };
+  nlp_analysis: Record<string, any>;
+  output: {
+    tier_applied: string;
+    transmuted_text: string;
+    keywords_preserved: string[];
+    keywords_dropped: string[];
+    [key: string]: any;
+  };
+  quality: Record<string, any>;
+  created_at: string;
+}
+
+/**
+ * Fetch the latest transmuted content for a given lesson + student.
+ * GET /api/content/transmuted/latest?lesson_id=...&student_id=...
+ *
+ * Returns:
+ * - TransmutedContentDoc on 200
+ * - null on 404 (no content yet)
+ */
+export const getLatestTransmutedContent = async (
+  studentId: string,
+  lessonId?: string,
+): Promise<TransmutedContentDoc | null> => {
+  const search = new URLSearchParams();
+  search.set("student_id", studentId);
+  if (lessonId) search.set("lesson_id", lessonId);
+
+  const endpoint = `${API_ENDPOINTS.CONTENT}/transmuted/latest?${search.toString()}`;
+
+  try {
+    return await apiGet<TransmutedContentDoc>(endpoint);
+  } catch (err: any) {
+    if (err?.status === 404) {
+      return null;
+    }
+    throw err;
+  }
 };

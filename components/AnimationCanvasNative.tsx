@@ -7,13 +7,23 @@ import { exampleUsage } from "@/animation/scriptGenerator";
 type Props = {
   /** Whether the animation should currently be playing */
   isPlaying: boolean;
+  /** Engine-ready script from backend. Falls back to exampleUsage() if not provided. */
+  script?: any | null;
 };
 
-export function AnimationCanvasNative({ isPlaying }: Props) {
+export function AnimationCanvasNative({ isPlaying, script }: Props) {
   const engineRef = useRef<AnimationEngine | null>(null);
-  const scriptRef = useRef(exampleUsage());
 
-  // Render a simple placeholder on web to avoid importing expo-2d-context (which expects window)
+  // ─── FIX 1: Always keep scriptRef in sync with the latest prop.
+  // The original code initialised scriptRef once at mount, meaning any
+  // subsequent script changes (e.g. OVERLOAD → LOW state change) were
+  // ignored when the GLView was already mounted.
+  const scriptRef = useRef<any>(script ?? exampleUsage());
+  useEffect(() => {
+    if (script) scriptRef.current = script;
+  }, [script]);
+
+  // Web fallback — expo-2d-context requires a native GL context
   if (Platform.OS === "web") {
     return (
       <View style={[styles.container, styles.webFallback]}>
@@ -24,7 +34,7 @@ export function AnimationCanvasNative({ isPlaying }: Props) {
     );
   }
 
-  // Lazy-require native-only modules so they are not loaded in the web bundle
+  // Lazy-require native-only modules so they are not bundled on web
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { GLView } = require("expo-gl") as typeof import("expo-gl");
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -32,13 +42,12 @@ export function AnimationCanvasNative({ isPlaying }: Props) {
 
   const handleContextCreate = async (gl: any) => {
     const ctx = new Expo2DContext(gl as any, {
-      // Allow enough gradient stops for our backgrounds/actors
       maxGradStops: 8,
       renderWithOffscreenBuffer: false,
       fastFillTesselation: false,
     });
 
-    // Polyfill ctx.ellipse for expo-2d-context if missing
+    // Polyfill ctx.ellipse — not present in all expo-2d-context versions
     if (!(ctx as any).ellipse) {
       (ctx as any).ellipse = function (
         x: number,
@@ -60,8 +69,7 @@ export function AnimationCanvasNative({ isPlaying }: Props) {
       };
     }
 
-    // Some canvas shadow properties are not supported by expo-2d-context on all platforms.
-    // Define safe no-op accessors so actor code can assign them without runtime errors.
+    // Shadow props are not supported — make them no-ops to prevent crashes
     ["shadowColor", "shadowBlur", "shadowOffsetX", "shadowOffsetY"].forEach(
       (prop) => {
         try {
@@ -72,16 +80,16 @@ export function AnimationCanvasNative({ isPlaying }: Props) {
               return undefined;
             },
             set(_value) {
-              // no-op – shadows are ignored on platforms that don't support them
+              /* no-op */
             },
           });
         } catch {
-          // Ignore if property cannot be redefined
+          /* ignore if already defined */
         }
       },
     );
 
-    // Some platforms/fonts are limited; avoid crashing when actors set unsupported font families.
+    // Font assignment — extract size only, ignore family
     try {
       Object.defineProperty(ctx, "font", {
         configurable: true,
@@ -90,35 +98,28 @@ export function AnimationCanvasNative({ isPlaying }: Props) {
           return "12px sans-serif";
         },
         set(value: string) {
-          // Best-effort: extract size, ignore family to keep expo-2d-context happy
           const match = /(\d+)px/.exec(value);
-          const size = match ? parseInt(match[1], 10) : 12;
-          (this as any)._fontSize = size;
+          (this as any)._fontSize = match ? parseInt(match[1], 10) : 12;
         },
       });
     } catch {
-      // If we can't override, rely on default behavior
+      /* rely on default behavior */
     }
 
-    // Text rendering relies on a font system that may not be initialized on native.
-    // To avoid crashes during testing, make text drawing safe no-ops.
-    (ctx as any).fillText = function () {
-      // ignore text on native canvas for now
-    };
-    (ctx as any).strokeText = function () {
-      // ignore text on native canvas for now
-    };
-    (ctx as any).measureText = function () {
-      return { width: 0 };
-    };
+    // Text drawing is not reliable on native — make all text calls no-ops.
+    // Scene renderers (sceneRenderers.ts) use only shapes, so this is safe.
+    (ctx as any).fillText = () => {};
+    (ctx as any).strokeText = () => {};
+    (ctx as any).measureText = () => ({ width: 0 });
 
-    // Minimal canvas-like wrapper that AnimationEngine expects
     const canvas = {
       width: gl.drawingBufferWidth ?? 800,
       height: gl.drawingBufferHeight ?? 600,
       getContext: () => ctx as any,
     };
 
+    // Use scriptRef.current so we always get the latest script,
+    // even if the prop changed between mount and GLView init.
     const engine = new AnimationEngine(canvas as any, scriptRef.current);
     engineRef.current = engine;
 
@@ -129,6 +130,7 @@ export function AnimationCanvasNative({ isPlaying }: Props) {
     }
   };
 
+  // ─── Play / pause control
   useEffect(() => {
     if (!engineRef.current) return;
     if (isPlaying) {
@@ -138,9 +140,41 @@ export function AnimationCanvasNative({ isPlaying }: Props) {
     }
   }, [isPlaying]);
 
+  // ─── FIX 2: When a NEW script arrives (cognitive state changed),
+  // fully reset the engine so the student sees the new visual from the start.
+  useEffect(() => {
+    if (!script) return;
+    scriptRef.current = script;
+
+    if (engineRef.current) {
+      // 1. Stop any in-flight animation frame loop
+      engineRef.current.pause();
+
+      // 2. Swap the script on the existing engine instance
+      (engineRef.current as any).script = script;
+
+      // 3. Reset playhead to zero
+      (engineRef.current as any).currentTime = 0;
+      (engineRef.current as any).reset?.();
+
+      // 4. Resume if we were already playing
+      if (isPlaying) {
+        engineRef.current.play();
+      } else {
+        // Draw the first frame of the new script as a still
+        engineRef.current.draw?.();
+      }
+    }
+    // isPlaying intentionally excluded — handled by its own sibling effect above
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [script]);
+
   return (
     <View style={styles.container}>
-      <GLView style={StyleSheet.absoluteFill} onContextCreate={handleContextCreate} />
+      <GLView
+        style={StyleSheet.absoluteFill}
+        onContextCreate={handleContextCreate}
+      />
     </View>
   );
 }
@@ -162,4 +196,3 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
 });
-

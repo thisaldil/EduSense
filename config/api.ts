@@ -64,4 +64,5 @@ export const API_ENDPOINTS = {
   PROGRESS: "/api/progress",
   UPLOADS: "/api/uploads",
   ACTIVITIES: "/api/activities",
+  ANIMATION_NEURO_ADAPTIVE: "/api/animation/neuro-adaptive",
 } as const;

@@ -14,7 +14,7 @@ import {
 } from "react-native";
 
 import { Colors, Typography } from "@/constants/theme";
-import { createLesson, ingestContent } from "@/services/lessons";
+import { createLesson } from "@/services/lessons";
 
 const SUBJECT_CHIPS = [
   { id: "science", label: "Science", icon: "flask", color: "#E8F5E9" },
@@ -58,18 +58,6 @@ export default function NewLessonScreen() {
         title: `Lesson: ${subjectMap[selectedSubject]}`,
         subject: subjectMap[selectedSubject],
         content: text,
-      });
-
-      // Fire-and-forget ingest to run the full NLP + transmutation
-      // pipeline for all cognitive states and persist it on the backend.
-      // We don't block the UX on this – if it fails, the student can
-      // still continue into the processing / explore flow.
-      ingestContent({
-        raw_text: text,
-        lesson_id: lesson.id ?? null,
-        session_id: sessionId,
-      }).catch((err) => {
-        console.warn("Failed to ingest lesson content", err);
       });
 
       // Navigate to processing screen with lesson_id and raw text so it can

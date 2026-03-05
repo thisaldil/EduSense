@@ -13,7 +13,7 @@ import {
 
 import { Colors, Typography } from "@/constants/theme";
 import { useNeuroState } from "@/context/NeuroStateContext";
-import { neuroApi } from "@/services/api";
+import { neuroApi, postTransmute } from "@/services/api";
 
 const STAGES = [
   { text: "Analyzing content...", emoji: "🔍" },
@@ -118,11 +118,12 @@ export default function ProcessingScreen() {
       try {
         setIsTransmuting(true);
         setTransmuteError(null);
-        const result = await neuroApi.transmute({
-          text: rawText,
+        const result = await postTransmute(
+          rawText,
           cognitive_state,
-          session_id: params.session_id,
-        });
+          (params.lesson_id as string | null) ?? null,
+          params.session_id,
+        );
         setTransmuteResult(result);
       } catch (error: any) {
         setTransmuteError(
