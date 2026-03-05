@@ -10,7 +10,7 @@ export default function TabLayout() {
   const { state } = useNeuroState();
 
   const badgeColor =
-    state.currentState === "LOW"
+    state.currentState === "LOW_LOAD"
       ? "#3B82F6"
       : state.currentState === "OVERLOAD"
         ? "#F97316"

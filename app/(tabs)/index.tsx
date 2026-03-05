@@ -225,14 +225,14 @@ export default function HomeScreen() {
   };
 
   const neuroLabel =
-    neuroState.currentState === "LOW"
+    neuroState.currentState === "LOW_LOAD"
       ? "Low · Deep Dive"
       : neuroState.currentState === "OVERLOAD"
         ? "High · Simplified"
         : "Optimal · Balanced";
 
   const neuroColor =
-    neuroState.currentState === "LOW"
+    neuroState.currentState === "LOW_LOAD"
       ? "#3B82F6"
       : neuroState.currentState === "OVERLOAD"
         ? "#F97316"

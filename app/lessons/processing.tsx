@@ -108,7 +108,7 @@ export default function ProcessingScreen() {
     hasStarted.current = true;
 
     const cognitive_state: neuroApi.CognitiveStateWire =
-      neuroState.currentState === "LOW"
+      neuroState.currentState === "LOW_LOAD"
         ? "LOW_LOAD"
         : neuroState.currentState === "OPTIMAL"
           ? "OPTIMAL"
@@ -231,13 +231,13 @@ export default function ProcessingScreen() {
           <View
             style={[
               styles.stateBadge,
-              neuroState.currentState === "LOW" && styles.stateBadgeLow,
+              neuroState.currentState === "LOW_LOAD" && styles.stateBadgeLow,
               neuroState.currentState === "OPTIMAL" && styles.stateBadgeOptimal,
               neuroState.currentState === "OVERLOAD" && styles.stateBadgeHigh,
             ]}
           >
             <Text style={styles.stateBadgeText}>
-              {neuroState.currentState === "LOW" &&
+              {neuroState.currentState === "LOW_LOAD" &&
                 "🟡 LOW LOAD — Narrative Mode"}
               {neuroState.currentState === "OPTIMAL" &&
                 "🟢 OPTIMAL — Direct Mode"}

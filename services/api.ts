@@ -225,6 +225,21 @@ export const apiDelete = <T = any>(endpoint: string): Promise<T> => {
 };
 
 /**
+ * Map baseline_cognitive_load → wire cognitive_state for visual engine.
+ */
+export function mapBaselineToVisualState(
+  baseline: string | null | undefined,
+): "OVERLOAD" | "OPTIMAL" | "LOW_LOAD" {
+  const upper = (baseline || "").toUpperCase().trim();
+  if (upper === "LOW" || upper === "LOW_LOAD") return "LOW_LOAD";
+  if (upper === "OVERLOAD" || upper === "HIGH") {
+    return "OVERLOAD";
+  }
+  // Default: treat anything else as OPTIMAL
+  return "OPTIMAL";
+}
+
+/**
  * Neuro-adaptive animation types and client (Member 2)
  */
 

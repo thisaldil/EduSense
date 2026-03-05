@@ -3,8 +3,14 @@
  * Handles authentication-related API calls
  */
 
-import { API_ENDPOINTS } from '@/config/api';
-import { apiPost, storeToken, storeUser, removeStoredToken, removeStoredUser } from './api';
+import { API_ENDPOINTS } from "@/config/api";
+import {
+  apiPost,
+  storeToken,
+  storeUser,
+  removeStoredToken,
+  removeStoredUser,
+} from "./api";
 
 export interface RegisterRequest {
   email: string;
@@ -13,7 +19,7 @@ export interface RegisterRequest {
   first_name: string;
   last_name: string;
   date_of_birth: string; // ISO date string (YYYY-MM-DD)
-  gender: 'male' | 'female' | 'other';
+  gender: "male" | "female" | "other";
 }
 
 export interface LoginRequest {
@@ -44,6 +50,13 @@ export interface User {
   created_at: string;
   updated_at: string;
   profile: any | null;
+  // Baseline / calibration fields returned from backend
+  // Canonical states: LOW_LOAD | OPTIMAL | OVERLOAD
+  baseline_cognitive_load?: "LOW_LOAD" | "OPTIMAL" | "OVERLOAD";
+  baseline_features?: Record<string, unknown> | null;
+  calibration_data?: Record<string, unknown> | null;
+  is_calibrated?: boolean;
+  neuro_profile?: string | null;
 }
 
 export interface LoginResponse {
@@ -56,13 +69,13 @@ export interface LoginResponse {
  * Register a new user
  */
 export const register = async (
-  data: RegisterRequest
+  data: RegisterRequest,
 ): Promise<LoginResponse> => {
   const response = await apiPost<LoginResponse>(
     API_ENDPOINTS.AUTH.REGISTER,
-    data
+    data,
   );
-  
+
   // Store the access token
   if (response.access_token) {
     await storeToken(response.access_token);
@@ -70,7 +83,7 @@ export const register = async (
   if (response.user) {
     await storeUser(response.user);
   }
-  
+
   return response;
 };
 
@@ -78,11 +91,8 @@ export const register = async (
  * Login with email and password
  */
 export const login = async (data: LoginRequest): Promise<LoginResponse> => {
-  const response = await apiPost<LoginResponse>(
-    API_ENDPOINTS.AUTH.LOGIN,
-    data
-  );
-  
+  const response = await apiPost<LoginResponse>(API_ENDPOINTS.AUTH.LOGIN, data);
+
   // Store the access token
   if (response.access_token) {
     await storeToken(response.access_token);
@@ -90,7 +100,7 @@ export const login = async (data: LoginRequest): Promise<LoginResponse> => {
   if (response.user) {
     await storeUser(response.user);
   }
-  
+
   return response;
 };
 
@@ -104,7 +114,7 @@ export const logout = async (): Promise<void> => {
   } catch (error) {
     // Ignore errors on logout endpoint
   }
-  
+
   // Always remove the token and user from storage
   await removeStoredToken();
   await removeStoredUser();
@@ -113,16 +123,18 @@ export const logout = async (): Promise<void> => {
 /**
  * Helper function to split a full name into first and last name
  */
-export const splitName = (fullName: string): { first_name: string; last_name: string } => {
+export const splitName = (
+  fullName: string,
+): { first_name: string; last_name: string } => {
   const parts = fullName.trim().split(/\s+/);
   if (parts.length === 0) {
-    return { first_name: '', last_name: '' };
+    return { first_name: "", last_name: "" };
   }
   if (parts.length === 1) {
-    return { first_name: parts[0], last_name: '' };
+    return { first_name: parts[0], last_name: "" };
   }
   const first_name = parts[0];
-  const last_name = parts.slice(1).join(' ');
+  const last_name = parts.slice(1).join(" ");
   return { first_name, last_name };
 };
 
@@ -130,6 +142,8 @@ export const splitName = (fullName: string): { first_name: string; last_name: st
  * Generate username from email
  */
 export const generateUsernameFromEmail = (email: string): string => {
-  return email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+  return email
+    .split("@")[0]
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
 };
-

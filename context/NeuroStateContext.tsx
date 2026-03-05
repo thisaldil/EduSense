@@ -4,10 +4,14 @@ import React, {
   useContext,
   useMemo,
   useState,
+  useEffect,
   type ReactNode,
 } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { neuroApi } from "@/services/api";
 
-type LoadState = "LOW" | "OPTIMAL" | "OVERLOAD";
+// Canonical frontend load states (match baseline_cognitive_load)
+export type LoadState = "LOW_LOAD" | "OPTIMAL" | "OVERLOAD";
 
 export interface NeuroState {
   baselineState?: LoadState;
@@ -16,12 +20,8 @@ export interface NeuroState {
   isForced: boolean;
 }
 
-export interface PredictResponse {
-  state: LoadState;
-  confidence: number;
-  // Allow extra fields without forcing the shape
-  [key: string]: unknown;
-}
+// Backend prediction response shape
+export type PredictResponse = neuroApi.PredictResponse;
 
 interface NeuroStateContextValue {
   state: NeuroState;
@@ -42,17 +42,57 @@ interface NeuroStateProviderProps {
 }
 
 export const NeuroStateProvider = ({ children }: NeuroStateProviderProps) => {
+  const { user } = useAuth();
   const [state, setState] = useState<NeuroState>({
     currentState: "OPTIMAL",
     confidence: 1.0,
     isForced: false,
   });
 
+  // Initialize from user's baseline once it's available
+  useEffect(() => {
+    const rawBaseline = (user as any)?.baseline_cognitive_load as
+      | "LOW_LOAD"
+      | "OPTIMAL"
+      | "OVERLOAD"
+      | undefined;
+    if (!rawBaseline) return;
+
+    // Normalize any legacy values into our three canonical states
+    const baseline: LoadState =
+      rawBaseline === "LOW_LOAD"
+        ? "LOW_LOAD"
+        : rawBaseline === "OVERLOAD"
+          ? "OVERLOAD"
+          : "OPTIMAL";
+
+    setState((prev) => {
+      // If we've already set a baseline, don't override user-driven changes
+      if (prev.baselineState === baseline && prev.currentState !== "OPTIMAL") {
+        return prev;
+      }
+      return {
+        ...prev,
+        baselineState: baseline,
+        currentState: baseline,
+        isForced: false,
+      };
+    });
+  }, [user]);
+
   const updateStateFromPrediction = useCallback(
     (predictionResponse: PredictResponse) => {
+      // Map backend state ("LOW" | "OPTIMAL" | "OVERLOAD") into our canonical LoadState
+      const mapped: LoadState =
+        predictionResponse.state === "LOW"
+          ? "LOW_LOAD"
+          : predictionResponse.state === "OVERLOAD"
+            ? "OVERLOAD"
+            : "OPTIMAL";
+
       setState((prev) => ({
         ...prev,
-        currentState: predictionResponse.state,
+        currentState: mapped,
         confidence: predictionResponse.confidence,
         isForced: false,
       }));
@@ -99,4 +139,3 @@ export const useNeuroState = (): NeuroStateContextValue => {
   }
   return ctx;
 };
-

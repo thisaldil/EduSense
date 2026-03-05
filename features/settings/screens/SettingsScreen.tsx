@@ -12,8 +12,10 @@ import {
 } from "react-native";
 
 import { Colors, Typography } from "@/constants/theme";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function SettingsScreen() {
+  const { logout } = useAuth();
   const [visualMode, setVisualMode] = useState(true);
   const [audioMode, setAudioMode] = useState(true);
   const [hapticMode, setHapticMode] = useState(true);
@@ -30,8 +32,13 @@ export function SettingsScreen() {
   const [offline, setOffline] = useState(false);
   const [autoPlay, setAutoPlay] = useState(true);
 
-  const onSignOut = () => {
-    // TODO: clear auth state & redirect
+  const onSignOut = async () => {
+    try {
+      await logout();
+      router.replace("/welcome");
+    } catch {
+      // Ignore logout errors for now
+    }
   };
 
   return (
