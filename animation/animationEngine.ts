@@ -149,6 +149,11 @@ export class AnimationEngine {
   }
 
   reset() {
+    // When the script has been hot-swapped (e.g. Photosynthesis → Water Cycle),
+    // make sure we also re‑derive concept + domain so backgrounds/anchors update.
+    this.concept = this.script.concept || this.script.title || this.concept;
+    this.domain = detectDomain(this.concept, this.script.scenes);
+
     this.pause();
     this.currentTime = 0;
     this.renderFrame(0);

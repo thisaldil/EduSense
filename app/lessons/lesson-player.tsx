@@ -322,23 +322,26 @@ function useNeuroAdaptiveScript({
       setScript(null);
       return;
     }
-    if (
-      lastStateRef.current === cognitiveState &&
-      lastStateRef.current !== undefined
-    )
-      return;
-
     setLoading(true);
     setError(null);
 
     try {
-      if (!cognitiveState) {
-        const existing = await animationApi.getLatestNeuroAdaptiveScript(
-          studentId,
-          sessionId ?? undefined,
-        );
-        if (existing) {
-          setScript(existing.script);
+      // 1) Try to reuse the latest saved script (to avoid regenerating on reload)
+      const latest = await animationApi.getLatestNeuroAdaptiveScript(
+        studentId,
+        sessionId ?? undefined,
+      );
+
+      if (latest) {
+        const desiredState = cognitiveState;
+        const lessonMatches =
+          !lessonId || latest.lesson_id === (lessonId as string | null);
+        const stateMatches =
+          !desiredState || latest.cognitive_state === desiredState;
+
+        if (lessonMatches && stateMatches) {
+          lastStateRef.current = latest.cognitive_state;
+          setScript(latest.script);
           return;
         }
       }
@@ -362,7 +365,7 @@ function useNeuroAdaptiveScript({
         sessionId: sessionId ?? undefined,
       });
 
-      lastStateRef.current = cognitiveState;
+      lastStateRef.current = resolvedState;
       setScript(animation.script);
     } catch (err: any) {
       setError(

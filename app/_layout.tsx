@@ -79,19 +79,19 @@ export default function RootLayout() {
                   name="onboarding/index"
                   options={{ headerShown: false }}
                 />
-                <Stack.Screen name="welcome" options={{ headerShown: true }} />
+                <Stack.Screen name="welcome" options={{ headerShown: false }} />
                 <Stack.Screen
                   name="auth/signup"
-                  options={{ headerShown: true }}
+                  options={{ headerShown: false }}
                 />
                 <Stack.Screen
                   name="auth/signin"
-                  options={{ headerShown: true }}
+                  options={{ headerShown: false }}
                 />
                 <Stack.Screen name="(tabs)" options={{ headerShown: true }} />
                 <Stack.Screen
                   name="calibration/index"
-                  options={{ headerShown: true, title: "Brain Sync" }}
+                  options={{ headerShown: false, title: "Brain Sync" }}
                 />
                 <Stack.Screen
                   name="calibration/task-reading"
@@ -107,19 +107,19 @@ export default function RootLayout() {
                 />
                 <Stack.Screen
                   name="lessons/new-lesson"
-                  options={{ headerShown: true }}
+                  options={{ headerShown: false }}
                 />
                 <Stack.Screen
                   name="lessons/lesson-player"
-                  options={{ headerShown: true }}
+                  options={{ headerShown: false }}
                 />
                 <Stack.Screen
                   name="lessons/quiz"
-                  options={{ headerShown: true }}
+                  options={{ headerShown: false }}
                 />
                 <Stack.Screen
                   name="lessons/quiz-result"
-                  options={{ headerShown: true }}
+                  options={{ headerShown: false }}
                 />
                 <Stack.Screen
                   name="lessons/quiz-review"
@@ -139,7 +139,7 @@ export default function RootLayout() {
                 />
                 <Stack.Screen
                   name="lessons/processing"
-                  options={{ headerShown: true }}
+                  options={{ headerShown: false }}
                 />
                 <Stack.Screen name="settings" options={{ headerShown: true }} />
                 <Stack.Screen
