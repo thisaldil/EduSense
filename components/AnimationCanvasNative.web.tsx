@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 
-import { AnimationEngine } from "@/animation/animationEngine";
+import { AnimationEngine } from "@/visual";
 import { exampleUsage } from "@/animation/scriptGenerator";
 
 type Props = {
@@ -23,7 +23,15 @@ export function AnimationCanvasNative({ isPlaying }: Props) {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const engine = new AnimationEngine(canvas as any, scriptRef.current);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const engine = new AnimationEngine(
+      ctx as any,
+      canvas.width || 800,
+      canvas.height || 600,
+      scriptRef.current,
+    );
     engineRef.current = engine;
     engine.draw?.();
 

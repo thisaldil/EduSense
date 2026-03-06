@@ -387,6 +387,24 @@ export default function HomeScreen() {
             renderItem={renderRecommendedCard}
           />
         </View>
+
+        {/* Dev: Sunny visual test route */}
+        <View className="mt-6 px-5">
+          <Pressable
+            className="rounded-2xl border border-dashed border-brand-surface-secondary px-4 py-3 bg-brand-surface-secondary/40"
+            onPress={async () => {
+              await playTapFeedback();
+              router.push("/test-visual");
+            }}
+          >
+            <Text className="text-xs font-sans-semibold text-brand-text-secondary">
+              Debug · Open Sunny test visual
+            </Text>
+            <Text className="text-[11px] text-brand-text-secondary mt-1">
+              Path: http://localhost:8081/test-visual
+            </Text>
+          </Pressable>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

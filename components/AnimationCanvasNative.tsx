@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 
-import { AnimationEngine } from "@/animation/animationEngine";
+import { AnimationEngine } from "@/visual";
 import { exampleUsage } from "@/animation/scriptGenerator";
 
 type Props = {
@@ -133,16 +133,14 @@ export function AnimationCanvasNative({ isPlaying, script }: Props) {
     ctx.save();
     ctx.scale(scale, scale);
 
-    const logicalCanvas = {
-      ...canvas,
-      width: LOGICAL_WIDTH,
-      height: LOGICAL_HEIGHT,
-      getContext: () => ctx as any,
-    };
-
     // Use scriptRef.current so we always get the latest script,
     // even if the prop changed between mount and GLView init.
-    const engine = new AnimationEngine(logicalCanvas as any, scriptRef.current);
+    const engine = new AnimationEngine(
+      ctx as any,
+      LOGICAL_WIDTH,
+      LOGICAL_HEIGHT,
+      scriptRef.current,
+    );
     engineRef.current = engine;
 
     if (isPlaying) {
