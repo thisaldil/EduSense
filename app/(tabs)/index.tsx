@@ -9,15 +9,15 @@ import {
   Pressable,
   SafeAreaView,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { Image } from "expo-image";
 
-import { Colors, Typography } from "@/constants/theme";
+import { Colors } from "@/constants/theme";
 import { useAuth } from "@/contexts/AuthContext";
+import { useNeuroState } from "@/context/NeuroStateContext";
 
 type Subject = "Physics" | "Biology" | "Cognition" | "Skills";
 
@@ -95,22 +95,23 @@ export default function HomeScreen() {
   const userName = user?.first_name || user?.username || "User";
   const userInitial = userName.charAt(0).toUpperCase();
   const [search, setSearch] = useState("");
+  const { state: neuroState } = useNeuroState();
 
-  // Redirect to welcome if not authenticated (wait for auth to finish loading)
   useEffect(() => {
     if (isLoading) return;
 
     if (!isAuthenticated) {
-      // Use setTimeout to ensure navigation is ready, especially on web
-      const timer = setTimeout(() => {
-        router.replace("/welcome");
-      }, Platform.OS === "web" ? 150 : 50);
+      const timer = setTimeout(
+        () => {
+          router.replace("/welcome");
+        },
+        Platform.OS === "web" ? 150 : 50,
+      );
 
       return () => clearTimeout(timer);
     }
   }, [isAuthenticated, isLoading]);
 
-  // Show loading or nothing while checking auth or redirecting
   if (isLoading || !isAuthenticated) {
     return null;
   }
@@ -134,16 +135,14 @@ export default function HomeScreen() {
     return (
       <Pressable
         onPress={() => handleLessonPress(item)}
-        style={({ pressed }) => [
-          styles.continueCard,
-          { transform: [{ scale: pressed ? 0.96 : 1 }] },
-        ]}
+        className="w-[280px] rounded-[20px] bg-brand-surface p-4 flex-row gap-3.5 shadow-md"
+        style={({ pressed }) => ({
+          transform: [{ scale: pressed ? 0.96 : 1 }],
+        })}
       >
         <View
-          style={[
-            styles.thumbnailCircle,
-            { backgroundColor: SUBJECT_COLORS[item.subject] },
-          ]}
+          className="w-16 h-16 rounded-[20px] items-center justify-center"
+          style={{ backgroundColor: SUBJECT_COLORS[item.subject] }}
         >
           <Ionicons
             name={SUBJECT_ICONS[item.subject]}
@@ -152,27 +151,32 @@ export default function HomeScreen() {
           />
         </View>
 
-        <View style={styles.continueContent}>
-          <Text style={styles.lessonTitle} numberOfLines={2}>
+        <View className="flex-1 justify-between">
+          <Text
+            className="font-sans-medium text-base text-brand-text"
+            numberOfLines={2}
+          >
             {item.title}
           </Text>
 
-          <View style={styles.subjectRow}>
-            <View style={styles.subjectBadge}>
-              <Text style={styles.subjectBadgeText}>{item.subject}</Text>
+          <View className="flex-row mt-1">
+            <View className="bg-brand-surface-secondary px-2.5 py-1 rounded-xl">
+              <Text className="text-xs font-sans-medium text-deep-blue">
+                {item.subject}
+              </Text>
             </View>
           </View>
 
-          <View style={styles.progressSection}>
-            <View style={styles.progressBarTrack}>
+          <View className="flex-row items-center gap-2.5 mt-2">
+            <View className="flex-1 h-2 rounded bg-brand-surface-secondary overflow-hidden">
               <View
-                style={[
-                  styles.progressBarFill,
-                  { width: `${progressPercent}%` },
-                ]}
+                className="h-full bg-teal rounded"
+                style={{ width: `${progressPercent}%` }}
               />
             </View>
-            <Text style={styles.progressLabel}>{progressPercent}%</Text>
+            <Text className="text-xs font-sans-semibold text-brand-text-secondary">
+              {progressPercent}%
+            </Text>
           </View>
         </View>
       </Pressable>
@@ -183,16 +187,14 @@ export default function HomeScreen() {
     return (
       <Pressable
         onPress={() => handleLessonPress(item)}
-        style={({ pressed }) => [
-          styles.recommendedCard,
-          { transform: [{ scale: pressed ? 0.96 : 1 }] },
-        ]}
+        className="flex-1 rounded-[20px] bg-brand-surface p-4 shadow mb-4"
+        style={({ pressed }) => ({
+          transform: [{ scale: pressed ? 0.96 : 1 }],
+        })}
       >
         <View
-          style={[
-            styles.recommendedIcon,
-            { backgroundColor: SUBJECT_COLORS[item.subject] },
-          ]}
+          className="w-14 h-14 rounded-2xl items-center justify-center mb-3"
+          style={{ backgroundColor: SUBJECT_COLORS[item.subject] }}
         >
           <Ionicons
             name={SUBJECT_ICONS[item.subject]}
@@ -201,51 +203,82 @@ export default function HomeScreen() {
           />
         </View>
 
-        <Text style={styles.recommendedTitle} numberOfLines={2}>
+        <Text
+          className="font-sans-medium text-base text-brand-text mb-3"
+          numberOfLines={2}
+        >
           {item.title}
         </Text>
 
-        <View style={styles.recommendedFooter}>
-          <View style={styles.subjectChip}>
-            <Text style={styles.subjectChipText}>{item.subject}</Text>
+        <View className="flex-row justify-between items-center">
+          <View className="bg-brand-surface-secondary px-2.5 py-1 rounded-xl">
+            <Text className="text-xs text-brand-text-secondary">
+              {item.subject}
+            </Text>
           </View>
-          <View style={styles.newBadge}>
-            <Text style={styles.newBadgeText}>New</Text>
+          <View className="bg-bright-orange px-2 py-1 rounded-lg">
+            <Text className="text-xs font-sans-semibold text-white">New</Text>
           </View>
         </View>
       </Pressable>
     );
   };
 
-  // Authenticated home screen
+  const neuroLabel =
+    neuroState.currentState === "LOW_LOAD"
+      ? "Low · Deep Dive"
+      : neuroState.currentState === "OVERLOAD"
+        ? "High · Simplified"
+        : "Optimal · Balanced";
+
+  const neuroColor =
+    neuroState.currentState === "LOW_LOAD"
+      ? "#3B82F6"
+      : neuroState.currentState === "OVERLOAD"
+        ? "#F97316"
+        : "#22C55E";
+
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView className="flex-1 bg-brand-background">
       <ScrollView
-        style={styles.scroll}
+        className="flex-1"
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={{ paddingBottom: 40 }}
       >
         {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <View style={styles.avatarCircle}>
+        <View className="flex-row justify-between items-center px-5 pt-4 pb-5">
+          <View className="flex-row items-center gap-3">
+            <View className="w-[52px] h-[52px] rounded-[26px] bg-teal items-center justify-center overflow-hidden">
               {user?.avatar_url ? (
                 <Image
                   source={{ uri: user.avatar_url }}
-                  style={styles.avatarImage}
+                  className="w-[52px] h-[52px] rounded-[26px]"
                   contentFit="cover"
                 />
               ) : (
-                <Text style={styles.avatarText}>{userInitial}</Text>
+                <Text className="font-heading text-xl text-white">
+                  {userInitial}
+                </Text>
               )}
             </View>
             <View>
-              <Text style={styles.greeting}>Hello!</Text>
-              <Text style={styles.userName}>{userName} 👋</Text>
+              <Text className="text-sm text-brand-text-secondary">Hello!</Text>
+              <Text className="font-sans-semibold text-xl text-brand-text">
+                {userName} 👋
+              </Text>
+              <View className="mt-1 flex-row items-center gap-1.5">
+                <View
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: neuroColor }}
+                />
+                <Text className="text-[11px] text-brand-text-secondary">
+                  Neuro‑State: {neuroLabel}
+                </Text>
+              </View>
             </View>
           </View>
           <Pressable
-            style={styles.settingsButton}
+            className="w-11 h-11 rounded-[22px] bg-brand-surface items-center justify-center shadow-md"
             onPress={() => router.push("/settings")}
             hitSlop={10}
           >
@@ -258,14 +291,14 @@ export default function HomeScreen() {
         </View>
 
         {/* Search */}
-        <View style={styles.searchBox}>
+        <View className="flex-row items-center bg-brand-surface mx-5 px-4 py-3.5 rounded-2xl gap-3 shadow">
           <Ionicons
             name="search"
             size={20}
             color={Colors.light.textSecondary}
           />
           <TextInput
-            style={styles.searchInput}
+            className="flex-1 font-sans text-base text-brand-text"
             placeholder="What do you want to learn?"
             placeholderTextColor={Colors.light.textSecondary}
             value={search}
@@ -275,10 +308,10 @@ export default function HomeScreen() {
 
         {/* Hero CTA */}
         <Pressable
-          style={({ pressed }) => [
-            styles.heroCard,
-            { transform: [{ scale: pressed ? 0.98 : 1 }] },
-          ]}
+          className="mx-5 mt-6 rounded-[20px] overflow-hidden shadow-xl"
+          style={({ pressed }) => ({
+            transform: [{ scale: pressed ? 0.98 : 1 }],
+          })}
           onPress={async () => {
             await playTapFeedback();
             router.push("/lessons/new-lesson");
@@ -286,21 +319,25 @@ export default function HomeScreen() {
         >
           <ImageBackground
             source={require("@/assets/images/new-lesson-hero.png")}
-            style={styles.heroBackground}
-            imageStyle={styles.heroImageStyle}
+            className="w-full h-[200px] justify-end"
+            imageStyle={{ borderRadius: 20 }}
           >
-            <View style={styles.heroOverlay} />
-            <View style={styles.heroContent}>
-              <View style={styles.heroBadge}>
+            <View className="absolute inset-0 bg-deep-blue/85" />
+            <View className="p-5 gap-2">
+              <View className="flex-row items-center self-start bg-white/25 px-3 py-1.5 rounded-full gap-1.5">
                 <Ionicons
                   name="sparkles"
                   size={16}
                   color={Colors.brightOrange}
                 />
-                <Text style={styles.heroBadgeText}>Start Learning</Text>
+                <Text className="text-xs font-sans-semibold text-white">
+                  Start Learning
+                </Text>
               </View>
-              <Text style={styles.heroTitle}>Begin Your Sensory Journey</Text>
-              <Text style={styles.heroSubtitle}>
+              <Text className="font-heading text-2xl text-white">
+                Begin Your Sensory Journey
+              </Text>
+              <Text className="font-sans text-base text-white/90">
                 Discover amazing lessons designed just for you
               </Text>
             </View>
@@ -308,18 +345,22 @@ export default function HomeScreen() {
         </Pressable>
 
         {/* Continue Learning */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Continue Learning 📚</Text>
+        <View className="mt-8">
+          <View className="flex-row justify-between items-center px-5 mb-4">
+            <Text className="font-sans-semibold text-xl text-brand-text">
+              Continue Learning 📚
+            </Text>
             <Pressable hitSlop={10} onPress={() => router.push("/progress")}>
-              <Text style={styles.seeAll}>See all</Text>
+              <Text className="font-sans-medium text-sm text-deep-blue">
+                See all
+              </Text>
             </Pressable>
           </View>
 
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.carouselContent}
+            contentContainerStyle={{ paddingHorizontal: 20, gap: 16 }}
           >
             {CONTINUE_LESSONS.map((lesson) => (
               <View key={lesson.id}>
@@ -330,9 +371,11 @@ export default function HomeScreen() {
         </View>
 
         {/* Recommended */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Recommended for You ⭐</Text>
+        <View className="mt-8">
+          <View className="flex-row justify-between items-center px-5 mb-4">
+            <Text className="font-sans-semibold text-xl text-brand-text">
+              Recommended for You ⭐
+            </Text>
           </View>
 
           <FlatList
@@ -340,301 +383,29 @@ export default function HomeScreen() {
             keyExtractor={(item) => item.id}
             numColumns={2}
             scrollEnabled={false}
-            columnWrapperStyle={styles.gridRow}
+            columnWrapperStyle={{ paddingHorizontal: 20, gap: 16 }}
             renderItem={renderRecommendedCard}
           />
+        </View>
+
+        {/* Dev: Sunny visual test route */}
+        <View className="mt-6 px-5">
+          <Pressable
+            className="rounded-2xl border border-dashed border-brand-surface-secondary px-4 py-3 bg-brand-surface-secondary/40"
+            onPress={async () => {
+              await playTapFeedback();
+              router.push("/test-visual");
+            }}
+          >
+            <Text className="text-xs font-sans-semibold text-brand-text-secondary">
+              Debug · Open Sunny test visual
+            </Text>
+            <Text className="text-[11px] text-brand-text-secondary mt-1">
+              Path: http://localhost:8081/test-visual
+            </Text>
+          </Pressable>
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#FAFBFC",
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 40,
-  },
-
-  // Header
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 20,
-  },
-  headerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  avatarCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: Colors.teal,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  avatarImage: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-  },
-  avatarText: {
-    ...Typography.h3,
-    color: "#FFFFFF",
-  },
-  greeting: {
-    ...Typography.caption,
-    color: Colors.light.textSecondary,
-  },
-  userName: {
-    ...Typography.h3,
-    color: Colors.light.text,
-  },
-  settingsButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.light.background,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-  },
-
-  // Search
-  searchBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: Colors.light.background,
-    marginHorizontal: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: 16,
-    gap: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
-  },
-  searchInput: {
-    flex: 1,
-    ...Typography.body,
-    color: Colors.light.text,
-  },
-
-  // Hero Card
-  heroCard: {
-    marginHorizontal: 20,
-    marginTop: 24,
-    borderRadius: 20,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
-  },
-  heroBackground: {
-    width: "100%",
-    height: 200,
-    justifyContent: "flex-end",
-  },
-  heroImageStyle: {
-    borderRadius: 20,
-  },
-  heroOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 82, 204, 0.85)",
-  },
-  heroContent: {
-    padding: 20,
-    gap: 8,
-  },
-  heroBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    backgroundColor: "rgba(255, 255, 255, 0.25)",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 6,
-  },
-  heroBadgeText: {
-    ...Typography.small,
-    color: "#FFFFFF",
-    fontFamily: "Inter_600SemiBold",
-  },
-  heroTitle: {
-    ...Typography.h2,
-    color: "#FFFFFF",
-  },
-  heroSubtitle: {
-    ...Typography.body,
-    color: "rgba(255, 255, 255, 0.9)",
-  },
-
-  // Section
-  section: {
-    marginTop: 32,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    ...Typography.h3,
-    color: Colors.light.text,
-  },
-  seeAll: {
-    ...Typography.label,
-    color: Colors.deepBlue,
-  },
-
-  // Continue Learning Cards
-  carouselContent: {
-    paddingHorizontal: 20,
-    gap: 16,
-  },
-  continueCard: {
-    width: 280,
-    backgroundColor: Colors.light.background,
-    borderRadius: 20,
-    padding: 16,
-    flexDirection: "row",
-    gap: 14,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-  },
-  thumbnailCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  continueContent: {
-    flex: 1,
-    justifyContent: "space-between",
-  },
-  lessonTitle: {
-    ...Typography.bodyMedium,
-    color: Colors.light.text,
-  },
-  subjectRow: {
-    flexDirection: "row",
-    marginTop: 4,
-  },
-  subjectBadge: {
-    backgroundColor: Colors.light.backgroundSecondary,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  subjectBadgeText: {
-    ...Typography.small,
-    color: Colors.deepBlue,
-    fontFamily: "Inter_500Medium",
-  },
-  progressSection: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginTop: 8,
-  },
-  progressBarTrack: {
-    flex: 1,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.light.backgroundSecondary,
-    overflow: "hidden",
-  },
-  progressBarFill: {
-    height: "100%",
-    backgroundColor: Colors.teal,
-    borderRadius: 4,
-  },
-  progressLabel: {
-    ...Typography.small,
-    color: Colors.light.textSecondary,
-    fontFamily: "Inter_600SemiBold",
-  },
-
-  // Recommended Cards
-  gridRow: {
-    paddingHorizontal: 20,
-    gap: 16,
-  },
-  recommendedCard: {
-    flex: 1,
-    backgroundColor: Colors.light.background,
-    borderRadius: 20,
-    padding: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
-    marginBottom: 16,
-  },
-  recommendedIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 12,
-  },
-  recommendedTitle: {
-    ...Typography.bodyMedium,
-    color: Colors.light.text,
-    marginBottom: 12,
-  },
-  recommendedFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  subjectChip: {
-    backgroundColor: Colors.light.backgroundSecondary,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  subjectChipText: {
-    ...Typography.small,
-    color: Colors.light.textSecondary,
-  },
-  newBadge: {
-    backgroundColor: Colors.brightOrange,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  newBadgeText: {
-    ...Typography.small,
-    color: "#FFFFFF",
-    fontFamily: "Inter_600SemiBold",
-  },
-});

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Pressable,
@@ -12,6 +12,8 @@ import {
 } from "react-native";
 
 import { Colors, Typography } from "@/constants/theme";
+import { useNeuroState } from "@/context/NeuroStateContext";
+import { neuroApi, postTransmute } from "@/services/api";
 
 const STAGES = [
   { text: "Analyzing content...", emoji: "🔍" },
@@ -29,64 +31,134 @@ const FUN_FACTS = [
   "🌈 Using multiple senses together helps you learn faster!",
 ] as const;
 
-type Stage = (typeof STAGES)[number];
-
 export default function ProcessingScreen() {
-  const params = useLocalSearchParams<{ lesson_id?: string }>();
+  const params = useLocalSearchParams<{
+    lesson_id?: string;
+    raw_text?: string;
+    session_id?: string;
+  }>();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [factIndex, setFactIndex] = useState(0);
-  const pulseAnim = new Animated.Value(1);
+
+  // FIX 1: useRef for pulseAnim to avoid re-creating on every render
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const progressAnim = useRef(new Animated.Value(0)).current;
+
+  const { state: neuroState } = useNeuroState();
+
+  // FIX 2: Use a ref to guard against double-execution (StrictMode / re-renders)
+  const hasStarted = useRef(false);
+  const [isTransmuting, setIsTransmuting] = useState(false);
+  const [transmuteError, setTransmuteError] = useState<string | null>(null);
+  const [transmuteResult, setTransmuteResult] =
+    useState<neuroApi.TransmuteResponse | null>(null);
 
   const progressPercent = useMemo(
     () => Math.round(((currentIndex + 1) / STAGES.length) * 100),
-    [currentIndex]
+    [currentIndex],
   );
 
-  // Pulse animation for the central icon
+  // Animate progress bar smoothly
   useEffect(() => {
-    Animated.loop(
+    Animated.timing(progressAnim, {
+      toValue: progressPercent,
+      duration: 600,
+      useNativeDriver: false,
+    }).start();
+  }, [progressPercent]);
+
+  // Pulse animation — stable ref, no re-creation
+  useEffect(() => {
+    const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
-          toValue: 1.1,
-          duration: 1000,
+          toValue: 1.12,
+          duration: 900,
           useNativeDriver: true,
         }),
         Animated.timing(pulseAnim, {
           toValue: 1,
-          duration: 1000,
+          duration: 900,
           useNativeDriver: true,
         }),
-      ])
-    ).start();
-  }, []);
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulseAnim]);
 
+  // Stage + fact cycling
   useEffect(() => {
     const stageInterval = setInterval(() => {
       setCurrentIndex((prev) => (prev < STAGES.length - 1 ? prev + 1 : prev));
     }, 3500);
-
     const factInterval = setInterval(() => {
       setFactIndex((prev) => (prev + 1) % FUN_FACTS.length);
     }, 6000);
-
     return () => {
       clearInterval(stageInterval);
       clearInterval(factInterval);
     };
   }, []);
 
+  // Guard transmutation with a ref so it only fires once
   useEffect(() => {
-    if (currentIndex === STAGES.length - 1) {
-      const timeout = setTimeout(() => {
-        router.push({
-          pathname: "/lessons/concept-explore",
-          params: { lesson_id: params.lesson_id },
-        });
-      }, 1200);
+    const rawText = params.raw_text;
+    if (!rawText || hasStarted.current) return;
+    hasStarted.current = true;
 
-      return () => clearTimeout(timeout);
-    }
-  }, [currentIndex, params.lesson_id]);
+    const cognitive_state: neuroApi.CognitiveStateWire =
+      neuroState.currentState === "LOW_LOAD"
+        ? "LOW_LOAD"
+        : neuroState.currentState === "OPTIMAL"
+          ? "OPTIMAL"
+          : "OVERLOAD";
+
+    const run = async () => {
+      try {
+        setIsTransmuting(true);
+        setTransmuteError(null);
+        const result = await postTransmute(
+          rawText,
+          cognitive_state,
+          (params.lesson_id as string | null) ?? null,
+          params.session_id,
+        );
+        setTransmuteResult(result);
+      } catch (error: any) {
+        setTransmuteError(
+          error?.message || "Failed to process your lesson. Please try again.",
+        );
+        // FIX 5: Reset guard so user can retry after an error
+        hasStarted.current = false;
+      } finally {
+        setIsTransmuting(false);
+      }
+    };
+
+    run();
+  }, [params.raw_text, neuroState.currentState]);
+
+  // Navigate once result is ready
+  useEffect(() => {
+    if (!transmuteResult) return;
+    const timeout = setTimeout(() => {
+      router.push({
+        pathname: "/lessons/concept-explore",
+        params: {
+          lesson_id: params.lesson_id,
+          raw_text: params.raw_text,
+          transmute: JSON.stringify(transmuteResult),
+        },
+      });
+    }, 1200);
+    return () => clearTimeout(timeout);
+  }, [transmuteResult]);
+
+  const progressWidth = progressAnim.interpolate({
+    inputRange: [0, 100],
+    outputRange: ["0%", "100%"],
+  });
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -95,205 +167,200 @@ export default function ProcessingScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.container}>
-          {/* Hero Section with Animation */}
-          <View style={styles.heroSection}>
-            <View style={styles.animationContainer}>
-              {/* Outer glow rings */}
-              <View style={[styles.glowRing, styles.glowRingOuter]} />
-              <View style={[styles.glowRing, styles.glowRingMiddle]} />
+        {/* ── Hero ── */}
+        <View style={styles.heroSection}>
+          <View style={styles.animationContainer}>
+            <View style={[styles.glowRing, styles.glowRingOuter]} />
+            <View style={[styles.glowRing, styles.glowRingMiddle]} />
+            <Animated.View
+              style={[
+                styles.centralIcon,
+                { transform: [{ scale: pulseAnim }] },
+              ]}
+            >
+              <View style={styles.iconCircle}>
+                <Ionicons name="planet" size={56} color="#FFFFFF" />
+              </View>
+            </Animated.View>
+          </View>
+          <Text style={styles.heroTitle}>Creating Your Lesson ✨</Text>
+          <Text style={styles.heroSubtitle}>
+            Mixing audio, visuals, and magic to make learning awesome!
+          </Text>
+        </View>
 
-              {/* Central animated icon */}
-              <Animated.View
-                style={[
-                  styles.centralIcon,
-                  { transform: [{ scale: pulseAnim }] },
-                ]}
+        {/* ── Progress Card ── */}
+        <View style={styles.progressCard}>
+          <View style={styles.progressHeader}>
+            <View style={styles.progressIconCircle}>
+              <Ionicons name="rocket" size={22} color={Colors.deepBlue} />
+            </View>
+            <View style={styles.progressInfo}>
+              <Text style={styles.progressTitle}>
+                {isTransmuting
+                  ? "Transmuting text..."
+                  : transmuteResult
+                    ? "Done!"
+                    : "Processing"}
+              </Text>
+              <Text style={styles.progressSubtitle}>
+                {isTransmuting
+                  ? `State: ${neuroState.currentState}`
+                  : "Almost there!"}
+              </Text>
+            </View>
+            <Text style={styles.progressPercent}>{progressPercent}%</Text>
+          </View>
+
+          <View style={styles.progressTrack}>
+            {/* FIX 6: Animated width instead of static style width */}
+            <Animated.View
+              style={[styles.progressFill, { width: progressWidth }]}
+            />
+          </View>
+
+          <Text style={styles.etaText}>
+            {isTransmuting
+              ? "⏱️ Talking to the Neuro‑Engine…"
+              : "⏱️ Almost done!"}
+          </Text>
+        </View>
+
+        {/* ── Cognitive State Badge ── */}
+        <View style={styles.stateBadgeRow}>
+          <View
+            style={[
+              styles.stateBadge,
+              neuroState.currentState === "LOW_LOAD" && styles.stateBadgeLow,
+              neuroState.currentState === "OPTIMAL" && styles.stateBadgeOptimal,
+              neuroState.currentState === "OVERLOAD" && styles.stateBadgeHigh,
+            ]}
+          >
+            <Text style={styles.stateBadgeText}>
+              {neuroState.currentState === "LOW_LOAD" &&
+                "🟡 LOW LOAD — Narrative Mode"}
+              {neuroState.currentState === "OPTIMAL" &&
+                "🟢 OPTIMAL — Direct Mode"}
+              {neuroState.currentState === "OVERLOAD" &&
+                "🔴 OVERLOAD — Simplified Mode"}
+            </Text>
+          </View>
+        </View>
+
+        {/* ── Stages ── */}
+        <View style={styles.stagesCard}>
+          {STAGES.map((stage, index) => {
+            const isCurrent = index === currentIndex;
+            const isCompleted = index < currentIndex;
+            return (
+              <View
+                key={stage.text}
+                style={[styles.stageRow, isCurrent && styles.stageRowActive]}
               >
-                <View style={styles.iconCircle}>
-                  <Ionicons name="planet" size={56} color="#FFFFFF" />
-                </View>
-              </Animated.View>
-
-              {/* Optional: Add your GIF here */}
-              {/* <Image
-              source={require("@/assets/images/processing-orb.gif")}
-              style={styles.processingGif}
-              resizeMode="contain"
-            /> */}
-            </View>
-
-            <View style={styles.heroText}>
-              <Text style={styles.heroTitle}>Creating Your Lesson ✨</Text>
-              <Text style={styles.heroSubtitle}>
-                Mixing audio, visuals, and magic to make learning awesome!
-              </Text>
-            </View>
-          </View>
-
-          {/* Progress Overview */}
-          <View style={styles.progressCard}>
-            <View style={styles.progressHeader}>
-              <View style={styles.progressIconCircle}>
-                <Ionicons name="rocket" size={24} color={Colors.deepBlue} />
-              </View>
-              <View style={styles.progressInfo}>
-                <Text style={styles.progressTitle}>Processing</Text>
-                <Text style={styles.progressSubtitle}>Almost there!</Text>
-              </View>
-              <Text style={styles.progressPercentLarge}>
-                {progressPercent}%
-              </Text>
-            </View>
-
-            <View style={styles.progressBarContainer}>
-              <View style={styles.progressTrack}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    { width: `${progressPercent}%` },
-                  ]}
-                />
-              </View>
-            </View>
-
-            <Text style={styles.etaText}>⏱️ About 30 seconds remaining</Text>
-          </View>
-
-          {/* Stages List */}
-          <View style={styles.stagesSection}>
-            <Text style={styles.stagesTitle}>What's Happening</Text>
-            <View style={styles.stagesCard}>
-              {STAGES.map((stage, index) => {
-                const isCurrent = index === currentIndex;
-                const isCompleted = index < currentIndex;
-
-                return (
+                <View style={styles.stageLeft}>
                   <View
-                    key={stage.text}
                     style={[
-                      styles.stageRow,
-                      isCurrent && styles.stageRowActive,
+                      styles.stageIndicator,
+                      isCompleted && styles.stageIndicatorCompleted,
+                      isCurrent && styles.stageIndicatorActive,
                     ]}
                   >
-                    <View style={styles.stageLeft}>
-                      <View
-                        style={[
-                          styles.stageIndicator,
-                          isCompleted && styles.stageIndicatorCompleted,
-                          isCurrent && styles.stageIndicatorActive,
-                        ]}
-                      >
-                        {isCompleted ? (
-                          <Ionicons
-                            name="checkmark"
-                            size={14}
-                            color="#FFFFFF"
-                          />
-                        ) : (
-                          <Text style={styles.stageEmoji}>{stage.emoji}</Text>
-                        )}
-                      </View>
-                      <Text
-                        style={[
-                          styles.stageText,
-                          isCurrent && styles.stageTextActive,
-                          isCompleted && styles.stageTextCompleted,
-                        ]}
-                      >
-                        {stage.text}
-                      </Text>
-                    </View>
-                    {isCurrent && (
-                      <View style={styles.loadingDots}>
-                        <View style={styles.dot} />
-                        <View style={styles.dot} />
-                        <View style={styles.dot} />
-                      </View>
+                    {isCompleted ? (
+                      <Ionicons name="checkmark" size={14} color="#fff" />
+                    ) : (
+                      <Text style={styles.stageEmoji}>{stage.emoji}</Text>
                     )}
                   </View>
-                );
-              })}
+                  <Text
+                    style={[
+                      styles.stageText,
+                      isCurrent && styles.stageTextActive,
+                      isCompleted && styles.stageTextCompleted,
+                    ]}
+                  >
+                    {stage.text}
+                  </Text>
+                </View>
+                {isCurrent && (
+                  <View style={styles.loadingDots}>
+                    {[0, 1, 2].map((i) => (
+                      <View key={i} style={styles.dot} />
+                    ))}
+                  </View>
+                )}
+              </View>
+            );
+          })}
+        </View>
+
+        {/* ── Fun Fact ── */}
+        <View style={styles.factCard}>
+          <Text style={styles.factLabel}>💡 Did you know?</Text>
+          <Text style={styles.factText}>{FUN_FACTS[factIndex]}</Text>
+        </View>
+
+        {/* ── Error ── */}
+        {transmuteError && (
+          <View style={styles.errorCard}>
+            <Ionicons name="alert-circle" size={20} color="#B91C1C" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.errorTitle}>We hit a bump</Text>
+              <Text style={styles.errorText}>{transmuteError}</Text>
             </View>
           </View>
+        )}
 
-          {/* Cancel Button */}
-          <Pressable
-            style={({ pressed }) => [
-              styles.cancelButton,
-              { opacity: pressed ? 0.7 : 1 },
-            ]}
-            onPress={() => router.back()}
-          >
-            <Ionicons
-              name="close-circle-outline"
-              size={20}
-              color={Colors.light.textSecondary}
-            />
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </Pressable>
-        </View>
+        {/* ── Cancel ── */}
+        <Pressable
+          style={({ pressed }) => [
+            styles.cancelButton,
+            { opacity: pressed ? 0.7 : 1 },
+          ]}
+          onPress={() => router.back()}
+        >
+          <Ionicons
+            name="close-circle-outline"
+            size={20}
+            color={Colors.light.textSecondary}
+          />
+          <Text style={styles.cancelButtonText}>Cancel</Text>
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#F0F7FF",
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 32,
-  },
-  container: {
-    flex: 1,
-  },
+  safeArea: { flex: 1, backgroundColor: "#F0F7FF" },
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 20, paddingTop: 28, paddingBottom: 36 },
 
-  // Hero Section
-  heroSection: {
-    alignItems: "center",
-    marginBottom: 32,
-  },
+  heroSection: { alignItems: "center", marginBottom: 28 },
   animationContainer: {
-    width: 200,
-    height: 200,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 24,
-  },
-  glowRing: {
-    position: "absolute",
-    borderRadius: 999,
-    borderWidth: 2,
-  },
-  glowRingOuter: {
     width: 180,
     height: 180,
-    borderColor: `${Colors.teal}30`,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
   },
+  glowRing: { position: "absolute", borderRadius: 999, borderWidth: 2 },
+  glowRingOuter: { width: 170, height: 170, borderColor: `${Colors.teal}30` },
   glowRingMiddle: {
-    width: 140,
-    height: 140,
+    width: 130,
+    height: 130,
     borderColor: `${Colors.deepBlue}20`,
   },
   centralIcon: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     alignItems: "center",
     justifyContent: "center",
   },
   iconCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     backgroundColor: Colors.deepBlue,
     alignItems: "center",
     justifyContent: "center",
@@ -303,20 +370,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 10,
   },
-  processingGif: {
-    width: 200,
-    height: 200,
-    position: "absolute",
-  },
-  heroText: {
-    alignItems: "center",
-    paddingHorizontal: 20,
-  },
   heroTitle: {
     ...Typography.h2,
     color: Colors.light.text,
     textAlign: "center",
-    marginBottom: 8,
+    marginBottom: 6,
   },
   heroSubtitle: {
     ...Typography.body,
@@ -325,14 +383,13 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 
-  // Progress Card
   progressCard: {
-    backgroundColor: Colors.light.background,
+    backgroundColor: "#fff",
     borderRadius: 20,
-    padding: 20,
-    marginBottom: 24,
+    padding: 18,
+    marginBottom: 16,
     shadowColor: "#000",
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.07,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 4,
@@ -340,41 +397,31 @@ const styles = StyleSheet.create({
   progressHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 16,
     gap: 12,
+    marginBottom: 14,
   },
   progressIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: `${Colors.deepBlue}15`,
     alignItems: "center",
     justifyContent: "center",
   },
-  progressInfo: {
-    flex: 1,
-  },
-  progressTitle: {
-    ...Typography.bodyMedium,
-    color: Colors.light.text,
-  },
+  progressInfo: { flex: 1 },
+  progressTitle: { ...Typography.bodyMedium, color: Colors.light.text },
   progressSubtitle: {
     ...Typography.small,
     color: Colors.light.textSecondary,
     marginTop: 2,
   },
-  progressPercentLarge: {
-    ...Typography.h2,
-    color: Colors.deepBlue,
-  },
-  progressBarContainer: {
-    marginBottom: 12,
-  },
+  progressPercent: { ...Typography.h2, color: Colors.deepBlue },
   progressTrack: {
     height: 10,
     borderRadius: 5,
     backgroundColor: `${Colors.deepBlue}15`,
     overflow: "hidden",
+    marginBottom: 10,
   },
   progressFill: {
     height: "100%",
@@ -387,22 +434,25 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  // Stages Section
-  stagesSection: {
-    marginBottom: 24,
+  stateBadgeRow: { alignItems: "center", marginBottom: 16 },
+  stateBadge: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: "#E2E8F0",
   },
-  stagesTitle: {
-    ...Typography.bodyMedium,
-    color: Colors.light.text,
-    marginBottom: 12,
-    paddingHorizontal: 4,
-  },
+  stateBadgeLow: { backgroundColor: "#FEF3C7" },
+  stateBadgeOptimal: { backgroundColor: "#DCFCE7" },
+  stateBadgeHigh: { backgroundColor: "#FEE2E2" },
+  stateBadgeText: { fontSize: 12, fontWeight: "700", color: "#1E293B" },
+
   stagesCard: {
-    backgroundColor: Colors.light.background,
+    backgroundColor: "#fff",
     borderRadius: 16,
     padding: 12,
+    marginBottom: 16,
     shadowColor: "#000",
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.05,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
@@ -411,106 +461,72 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: 10,
+    paddingVertical: 9,
     paddingHorizontal: 8,
     borderRadius: 12,
   },
-  stageRowActive: {
-    backgroundColor: `${Colors.teal}10`,
-  },
-  stageLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-    gap: 12,
-  },
+  stageRowActive: { backgroundColor: `${Colors.teal}12` },
+  stageLeft: { flexDirection: "row", alignItems: "center", flex: 1, gap: 12 },
   stageIndicator: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: Colors.light.backgroundSecondary,
+    backgroundColor: "#F1F5F9",
     alignItems: "center",
     justifyContent: "center",
   },
-  stageIndicatorCompleted: {
-    backgroundColor: Colors.teal,
-  },
-  stageIndicatorActive: {
-    backgroundColor: Colors.deepBlue,
-  },
-  stageEmoji: {
-    fontSize: 16,
-  },
-  stageText: {
-    ...Typography.body,
-    color: Colors.light.textSecondary,
-    flex: 1,
-  },
+  stageIndicatorCompleted: { backgroundColor: Colors.teal },
+  stageIndicatorActive: { backgroundColor: Colors.deepBlue },
+  stageEmoji: { fontSize: 15 },
+  stageText: { ...Typography.body, color: Colors.light.textSecondary, flex: 1 },
   stageTextActive: {
     color: Colors.light.text,
     fontFamily: "Inter_600SemiBold",
   },
-  stageTextCompleted: {
-    color: Colors.light.textSecondary,
-  },
-  loadingDots: {
-    flexDirection: "row",
-    gap: 4,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.teal,
-  },
+  stageTextCompleted: { color: Colors.light.textSecondary },
+  loadingDots: { flexDirection: "row", gap: 4 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.teal },
 
-  // Fact Card
   factCard: {
     backgroundColor: `${Colors.brightOrange}15`,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: `${Colors.brightOrange}25`,
   },
-  factHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 8,
+  factLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: Colors.brightOrange,
+    marginBottom: 6,
   },
-  factIconCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Colors.light.background,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  factTitle: {
-    ...Typography.bodyMedium,
-    color: Colors.light.text,
-  },
-  factText: {
-    ...Typography.body,
-    color: Colors.light.text,
-    lineHeight: 22,
-  },
+  factText: { ...Typography.body, color: Colors.light.text, lineHeight: 22 },
 
-  // Cancel Button
+  errorCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginBottom: 16,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+  },
+  errorTitle: { ...Typography.bodyMedium, color: "#B91C1C", marginBottom: 3 },
+  errorText: { ...Typography.small, color: "#7F1D1D" },
+
   cancelButton: {
-    height: 52,
-    borderRadius: 16,
+    height: 50,
+    borderRadius: 14,
     borderWidth: 1.5,
     borderColor: Colors.light.border,
-    backgroundColor: Colors.light.background,
+    backgroundColor: "#fff",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
   },
-  cancelButtonText: {
-    ...Typography.button,
-    color: Colors.light.textSecondary,
-  },
+  cancelButtonText: { ...Typography.button, color: Colors.light.textSecondary },
 });

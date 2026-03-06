@@ -37,12 +37,13 @@ export function OnboardingScreen() {
     if (next < onboardingSlides.length) {
       listRef.current?.scrollToIndex({ index: next, animated: true });
     } else {
-      router.replace("/welcome");
+      // After onboarding, go directly into the Brain Sync calibration intro
+      router.replace("/calibration");
     }
   };
 
   const skip = () => {
-    router.replace("/welcome");
+    router.replace("/calibration");
   };
 
   const renderItem: ListRenderItem<OnboardingSlide> = ({ item }) => (

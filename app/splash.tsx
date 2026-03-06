@@ -11,19 +11,42 @@ import {
 } from "react-native";
 
 import { Colors, Typography } from "@/constants/theme";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function SplashScreen() {
   const progress = useRef(new Animated.Value(0)).current;
+  const { user, isAuthenticated, isLoading } = useAuth();
 
   useEffect(() => {
     Animated.timing(progress, {
       toValue: 1,
-      duration: 5000,
+      duration: 2500,
       useNativeDriver: false, // width animation
-    }).start(() => {
-      router.replace("/onboarding");
-    });
+    }).start();
   }, [progress]);
+
+  useEffect(() => {
+    if (isLoading) return;
+
+    const timeout = setTimeout(() => {
+      if (!isAuthenticated) {
+        router.replace("/onboarding");
+        return;
+      }
+
+      const isCalibrated =
+        (user as any)?.is_calibrated === true ||
+        (user as any)?.baseline_cognitive_load != null;
+
+      if (isCalibrated) {
+        router.replace("/(tabs)");
+      } else {
+        router.replace("/calibration");
+      }
+    }, 2600);
+
+    return () => clearTimeout(timeout);
+  }, [isAuthenticated, isLoading, user]);
 
   const progressWidth = progress.interpolate({
     inputRange: [0, 1],

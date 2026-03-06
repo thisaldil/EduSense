@@ -1,10 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -14,519 +12,619 @@ import {
 } from "react-native";
 
 import { Colors, Typography } from "@/constants/theme";
-import { generateQuiz, getQuiz, Quiz } from "@/services/lessons";
 
-type TabKey = "explanation" | "examples" | "related";
+// ─── Types ────────────────────────────────────────────────────────────────────
+type CognitiveState = "OVERLOAD" | "OPTIMAL" | "LOW_LOAD";
 
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "explanation", label: "Explanation" },
-  { key: "examples", label: "Examples" },
-  { key: "related", label: "Related" },
-];
+type TransmuteResult = {
+  original_complexity_score?: number;
+  flesch_kincaid_grade?: number;
+  dependency_distance?: number;
+  keywords_preserved?: string[];
+  transmuted_text?: string;
+  tier_applied?: string;
+  cognitive_state?: CognitiveState;
+};
 
-const difficultyLevels = ["Simplify", "Balanced", "Advanced"] as const;
-type Difficulty = (typeof difficultyLevels)[number];
+// ─── Helper: tier color ───────────────────────────────────────────────────────
+function tierColor(tier?: string): string {
+  if (!tier) return Colors.deepBlue;
+  if (tier.includes("Tier 3")) return "#EF4444";
+  if (tier.includes("Tier 1")) return "#F59E0B";
+  return "#22C55E";
+}
 
+// ─── Metric Pill ─────────────────────────────────────────────────────────────
+function MetricPill({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: string;
+  color: string;
+}) {
+  return (
+    <View style={metricStyles.pill}>
+      <Text style={metricStyles.label}>{label}</Text>
+      <Text style={[metricStyles.value, { color }]}>{value}</Text>
+    </View>
+  );
+}
+const metricStyles = StyleSheet.create({
+  pill: {
+    flex: 1,
+    alignItems: "center",
+    backgroundColor: "#F8FAFC",
+    borderRadius: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  label: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#94A3B8",
+    letterSpacing: 0.8,
+    marginBottom: 3,
+  },
+  value: { fontSize: 13, fontWeight: "700" },
+});
+
+// ─── Cognitive State Layouts ────────────────────────────────────────────────────
+type LayoutFactoryProps = {
+  cognitiveState?: CognitiveState;
+  text?: string;
+  keywords?: string[];
+};
+
+function LayoutFactory({ cognitiveState, text, keywords }: LayoutFactoryProps) {
+  const safeText =
+    text ||
+    "No transmuted text found. Try generating the lesson again once the Neuro-Engine has processed your lesson.";
+
+  switch (cognitiveState) {
+    case "OVERLOAD":
+      return <SimpleListView text={safeText} />;
+    case "LOW_LOAD":
+      return <StoryModeView text={safeText} />;
+    case "OPTIMAL":
+    default:
+      return <StandardProseView text={safeText} keywords={keywords} />;
+  }
+}
+
+function SimpleListView({ text }: { text: string }) {
+  const chunks = text.split(/\n{2,}/).filter((c) => c.trim().length > 0);
+
+  return (
+    <View style={styles.simpleListCard}>
+      <View style={styles.simpleListHeader}>
+        <Ionicons name="school-outline" size={22} color="#111827" />
+        <Text style={styles.simpleListTitle}>Teacher View</Text>
+      </View>
+      {chunks.map((chunk, index) => (
+        <View key={index} style={styles.simpleListItem}>
+          <Text style={styles.simpleListBullet}>•</Text>
+          <Text style={styles.simpleListText}>{chunk.trim()}</Text>
+        </View>
+      ))}
+      {chunks.length === 0 && (
+        <Text style={styles.simpleListText}>{text.trim()}</Text>
+      )}
+    </View>
+  );
+}
+
+function StandardProseView({
+  text,
+  keywords,
+}: {
+  text: string;
+  keywords?: string[];
+}) {
+  return (
+    <View style={styles.standardProseContainer}>
+      <View style={styles.standardProseMain}>
+        <Text style={styles.standardProseHeading}>Lesson Explanation</Text>
+        <Text style={styles.standardProseText}>{text}</Text>
+      </View>
+      {keywords && keywords.length > 0 && (
+        <View style={styles.vocabSidebar}>
+          <Text style={styles.vocabSidebarLabel}>Vocabulary</Text>
+          {keywords.map((kw) => (
+            <View key={kw} style={styles.vocabChip}>
+              <Text style={styles.vocabChipText}>{kw}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function StoryModeView({ text }: { text: string }) {
+  return (
+    <View style={styles.storyModeContainer}>
+      <View style={styles.storyHeader}>
+        <View style={styles.jaxAvatar}>
+          <Text style={styles.jaxAvatarText}>🧭</Text>
+        </View>
+        <View>
+          <Text style={styles.storyTitle}>Jax the Explorer</Text>
+          <Text style={styles.storySubtitle}>Adventure Mode</Text>
+        </View>
+      </View>
+      <Text style={styles.storyBody}>{text}</Text>
+    </View>
+  );
+}
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function ConceptExploreScreen() {
-  const params = useLocalSearchParams<{ lesson_id?: string }>();
-  const [activeTab, setActiveTab] = useState<TabKey>("explanation");
-  const [difficulty, setDifficulty] = useState<Difficulty>("Balanced");
-  const [isLoadingQuiz, setIsLoadingQuiz] = useState(false);
+  const params = useLocalSearchParams<{
+    lesson_id?: string;
+    raw_text?: string;
+    transmute?: string;
+    cognitive_state?: CognitiveState;
+  }>();
 
-  const conceptName = "Newton's First Law";
-  const lessonId = params.lesson_id;
-
-  const handleTestYourself = async () => {
-    if (!lessonId) {
-      Alert.alert(
-        "Error",
-        "Lesson ID is missing. Please go back and try again."
-      );
-      return;
-    }
-
-    setIsLoadingQuiz(true);
+  // FIX 1: Properly type the parsed transmute result
+  const parsedTransmute = useMemo<TransmuteResult | null>(() => {
+    if (!params.transmute) return null;
     try {
-      // Try to generate quiz (this will create a new quiz or return existing one)
-      const quiz = await generateQuiz({ lesson_id: lessonId });
-
-      // Navigate to quiz screen with quiz data
-      router.push({
-        pathname: "/lessons/quiz",
-        params: {
-          quiz_id: quiz.id,
-          lesson_id: lessonId,
-        },
-      });
-    } catch (error: any) {
-      Alert.alert(
-        "Error",
-        error.message || "Failed to generate quiz. Please try again."
-      );
-    } finally {
-      setIsLoadingQuiz(false);
+      return JSON.parse(params.transmute as string) as TransmuteResult;
+    } catch {
+      return null;
     }
-  };
+  }, [params.transmute]);
 
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case "explanation":
-        return (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Core idea</Text>
-            <Text style={styles.cardBody}>
-              An object will stay at <Text style={styles.highlight}>rest</Text>{" "}
-              or keep moving at a{" "}
-              <Text style={styles.highlight}>constant velocity</Text> unless a{" "}
-              <Text style={styles.highlight}>net external force</Text> acts on
-              it. This is why you feel a jolt when a bus suddenly stops — your
-              body wants to keep moving.
-            </Text>
-          </View>
-        );
-      case "examples":
-        return (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Real-world examples</Text>
-            <View style={styles.examplesList}>
-              <View style={styles.exampleItem}>
-                <Image
-                  source={require("@/assets/images/new-lesson-hero.png")}
-                  style={styles.exampleImage}
-                />
-                <Text style={styles.exampleText}>
-                  A book on a table stays still until someone pushes it.
-                </Text>
-              </View>
-              <View style={styles.exampleItem}>
-                <Image
-                  source={require("@/assets/images/new-lesson-hero.png")}
-                  style={styles.exampleImage}
-                />
-                <Text style={styles.exampleText}>
-                  A skateboard keeps rolling until friction or a foot stops it.
-                </Text>
-              </View>
-              <View style={styles.exampleItem}>
-                <Image
-                  source={require("@/assets/images/new-lesson-hero.png")}
-                  style={styles.exampleImage}
-                />
-                <Text style={styles.exampleText}>
-                  Passengers lean forward when a car brakes suddenly.
-                </Text>
-              </View>
-            </View>
-          </View>
-        );
-      case "related":
-        return (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Connected concepts</Text>
-            <View style={styles.chipRow}>
-              <View style={styles.chip}>
-                <Text style={styles.chipText}>Inertia</Text>
-              </View>
-              <View style={styles.chip}>
-                <Text style={styles.chipText}>Net force</Text>
-              </View>
-              <View style={styles.chip}>
-                <Text style={styles.chipText}>Friction</Text>
-              </View>
-              <View style={styles.chip}>
-                <Text style={styles.chipText}>Newton's Second Law</Text>
-              </View>
-            </View>
-          </View>
-        );
-      default:
-        return null;
-    }
-  };
+  const [showRaw, setShowRaw] = useState(false);
+  const color = tierColor(parsedTransmute?.tier_applied);
+  const cognitiveState: CognitiveState =
+    (params.cognitive_state as CognitiveState) ||
+    (parsedTransmute?.cognitive_state as CognitiveState) ||
+    "OPTIMAL";
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.root}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.appBar}>
-            <Pressable
-              style={styles.backButton}
-              onPress={() => router.back()}
-              hitSlop={10}
-            >
-              <Ionicons
-                name="chevron-back"
-                size={20}
-                color={Colors.light.text}
-              />
-            </Pressable>
-            <View style={styles.headerTextBlock}>
-              <Text style={styles.headerTitle}>{conceptName}</Text>
-              <Text style={styles.headerSubtitle}>Explore the concept</Text>
-            </View>
-            <View style={styles.headerActions}>
-              <Pressable style={styles.iconButton} hitSlop={10}>
-                <Ionicons
-                  name="share-social-outline"
-                  size={20}
-                  color={Colors.light.textSecondary}
-                />
-              </Pressable>
-              <Pressable style={styles.iconButton} hitSlop={10}>
-                <Ionicons
-                  name="bookmark-outline"
-                  size={20}
-                  color={Colors.light.textSecondary}
-                />
-              </Pressable>
-            </View>
+      {/* ── Header ── */}
+      <View style={styles.header}>
+        <Pressable
+          style={styles.backButton}
+          onPress={() => router.back()}
+          hitSlop={10}
+        >
+          <Ionicons name="chevron-back" size={20} color="#333" />
+        </Pressable>
+        <View style={styles.headerCenter}>
+          <View style={styles.chapterBadge}>
+            <Text style={styles.chapterBadgeText}>⚡ Neuro-Engine Result</Text>
+          </View>
+          <Text style={styles.headerTitle}>Transmuted Lesson</Text>
+          <Text style={styles.headerTagline}>Adapted to your brain state</Text>
+        </View>
+        <View style={{ width: 36 }} />
+      </View>
+
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── Tier Banner ── */}
+        {parsedTransmute?.tier_applied && (
+          <View style={[styles.tierBanner, { borderLeftColor: color }]}>
+            <View style={[styles.tierDot, { backgroundColor: color }]} />
+            <Text style={[styles.tierText, { color }]}>
+              {parsedTransmute.tier_applied}
+            </Text>
+          </View>
+        )}
+
+        {/* ── Transmuted Text (PRIMARY) ── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>TRANSMUTED OUTPUT</Text>
+          <View style={[styles.transmuteCard, { borderColor: `${color}40` }]}>
+            <LayoutFactory
+              cognitiveState={cognitiveState}
+              text={parsedTransmute?.transmuted_text}
+              keywords={parsedTransmute?.keywords_preserved}
+            />
           </View>
         </View>
 
-        {/* Tabs + content */}
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Tabs */}
-          <View style={styles.tabsRow}>
-            {TABS.map((tab) => {
-              const active = tab.key === activeTab;
-              return (
-                <Pressable
-                  key={tab.key}
-                  style={[styles.tab, active && styles.tabActive]}
-                  onPress={() => setActiveTab(tab.key)}
-                >
-                  <Text
-                    style={[styles.tabLabel, active && styles.tabLabelActive]}
-                  >
-                    {tab.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          {/* Main tab content */}
-          {renderTabContent()}
-
-          {/* Experience It */}
-          <View style={styles.experienceCard}>
-            <View style={styles.experienceTextBlock}>
-              <Text style={styles.experienceTitle}>Experience it</Text>
-              <Text style={styles.experienceBody}>
-                Trigger a short haptic, audio, and visual demo to feel how
-                Newton&apos;s First Law behaves in motion.
-              </Text>
-            </View>
-            <Pressable
-              style={styles.experienceButton}
-              onPress={() => {
-                if (lessonId) {
-                  router.push({
-                    pathname: "/lessons/lesson-player",
-                    params: { lesson_id: lessonId },
-                  });
+        {/* ── NLP Metrics ── */}
+        {parsedTransmute && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>NLP ANALYSIS METRICS</Text>
+            <View style={styles.metricsRow}>
+              <MetricPill
+                label="F-K GRADE"
+                value={
+                  parsedTransmute.flesch_kincaid_grade != null
+                    ? `Grade ${parsedTransmute.flesch_kincaid_grade.toFixed(1)}`
+                    : "—"
                 }
-              }}
-              disabled={!lessonId}
-            >
-              <Ionicons name="sparkles-outline" size={18} color="#FFFFFF" />
-              <Text style={styles.experienceButtonText}>Play demo</Text>
-            </Pressable>
+                color={color}
+              />
+              <MetricPill
+                label="COMPLEXITY"
+                value={
+                  parsedTransmute.original_complexity_score != null
+                    ? parsedTransmute.original_complexity_score.toFixed(2)
+                    : "—"
+                }
+                color={color}
+              />
+              <MetricPill
+                label="DEP. DISTANCE"
+                value={
+                  parsedTransmute.dependency_distance != null
+                    ? parsedTransmute.dependency_distance.toFixed(2)
+                    : "—"
+                }
+                color={color}
+              />
+            </View>
           </View>
+        )}
 
-          {/* Difficulty slider */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Difficulty</Text>
-            <Text style={styles.cardBody}>
-              Adjust the explanation level from simpler language to more
-              advanced physics terminology.
-            </Text>
-            <View style={styles.difficultyRow}>
-              {difficultyLevels.map((level) => {
-                const active = difficulty === level;
-                return (
-                  <Pressable
-                    key={level}
-                    style={[
-                      styles.difficultyChip,
-                      active && styles.difficultyChipActive,
-                    ]}
-                    onPress={() => setDifficulty(level)}
-                  >
-                    <Text
+        {/* ── Keywords Preserved ── */}
+        {parsedTransmute?.keywords_preserved &&
+          parsedTransmute.keywords_preserved.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>KEYWORDS PRESERVED</Text>
+              <View style={styles.keywordsCard}>
+                <View style={styles.keywordsWrap}>
+                  {parsedTransmute.keywords_preserved.map((kw) => (
+                    <View
+                      key={kw}
                       style={[
-                        styles.difficultyText,
-                        active && styles.difficultyTextActive,
+                        styles.keywordChip,
+                        {
+                          backgroundColor: `${color}18`,
+                          borderColor: `${color}40`,
+                        },
                       ]}
                     >
-                      {level}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+                      <Text style={[styles.keywordText, { color }]}>{kw}</Text>
+                    </View>
+                  ))}
+                </View>
+                <Text style={styles.keywordCount}>
+                  {parsedTransmute.keywords_preserved.length} core terms
+                  preserved ✓
+                </Text>
+              </View>
+            </View>
+          )}
+
+        {/* ── Raw Input Toggle ── */}
+        <View style={styles.section}>
+          <Pressable
+            style={styles.rawToggle}
+            onPress={() => setShowRaw((v) => !v)}
+          >
+            <Text style={styles.sectionLabel}>RAW INPUT TEXT</Text>
+            <Ionicons
+              name={showRaw ? "chevron-up" : "chevron-down"}
+              size={16}
+              color="#94A3B8"
+            />
+          </Pressable>
+          {showRaw && (
+            <View style={styles.rawCard}>
+              <Text style={styles.rawText}>
+                {params.raw_text || "No raw text available."}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* ── CTA ── */}
+        <Pressable
+          style={styles.demoCard}
+          onPress={() => {
+            if (params.lesson_id) {
+              router.push({
+                pathname: "/lessons/lesson-player",
+                params: { lesson_id: params.lesson_id },
+              });
+            }
+          }}
+        >
+          <View style={styles.demoLeft}>
+            <Text style={styles.demoEmoji}>🎮</Text>
+            <View>
+              <Text style={styles.demoTitle}>See it move!</Text>
+              <Text style={styles.demoSub}>Play a quick demo</Text>
             </View>
           </View>
-        </ScrollView>
+          <View style={styles.demoArrow}>
+            <Ionicons name="arrow-forward" size={18} color="#fff" />
+          </View>
+        </Pressable>
 
-        {/* Bottom Quiz button */}
-        <View style={styles.footer}>
-          <Pressable
-            style={[
-              styles.quizButton,
-              (isLoadingQuiz || !lessonId) && styles.quizButtonDisabled,
-            ]}
-            onPress={handleTestYourself}
-            disabled={isLoadingQuiz || !lessonId}
-          >
-            {isLoadingQuiz ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Ionicons name="help-buoy-outline" size={20} color="#FFFFFF" />
-            )}
-            <Text style={styles.quizButtonText}>
-              {isLoadingQuiz ? "Loading..." : "Test yourself"}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
+        <View style={{ height: 24 }} />
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.light.backgroundSecondary,
-  },
-  root: {
-    flex: 1,
-  },
+  safeArea: { flex: 1, backgroundColor: "#F7F5FF" },
+  scroll: { flex: 1 },
+  scrollContent: { paddingTop: 16, paddingHorizontal: 16, paddingBottom: 32 },
+
   header: {
-    paddingTop: 12,
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    backgroundColor: Colors.light.background,
-  },
-  appBar: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: Colors.light.backgroundSecondary,
-  },
-  headerTextBlock: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  headerTitle: {
-    ...Typography.h3,
-    color: Colors.light.text,
-  },
-  headerSubtitle: {
-    ...Typography.caption,
-    color: Colors.light.textSecondary,
-    marginTop: 4,
-  },
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 14,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#EFEFEF",
     gap: 8,
   },
-  iconButton: {
+  backButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
+    backgroundColor: "#F2F2F2",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: Colors.light.backgroundSecondary,
   },
-  scroll: {
-    flex: 1,
+  headerCenter: { flex: 1, alignItems: "center", gap: 3 },
+  chapterBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 20,
+    backgroundColor: "#EDE9FF",
   },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    gap: 20,
+  chapterBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#7C5CBF",
+    letterSpacing: 0.4,
   },
-  tabsRow: {
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#1A1A2E",
+    textAlign: "center",
+  },
+  headerTagline: { fontSize: 11, color: "#888", fontStyle: "italic" },
+
+  tierBanner: {
     flexDirection: "row",
-    backgroundColor: Colors.light.border,
-    borderRadius: 12,
-    padding: 4,
-  },
-  tab: {
-    flex: 1,
-    borderRadius: 8,
-    paddingVertical: 8,
     alignItems: "center",
-    justifyContent: "center",
-  },
-  tabActive: {
-    backgroundColor: Colors.light.background,
-  },
-  tabLabel: {
-    ...Typography.caption,
-    color: Colors.light.textSecondary,
-  },
-  tabLabelActive: {
-    color: Colors.light.text,
-    fontWeight: "600",
-  },
-  card: {
-    borderRadius: 16,
-    backgroundColor: Colors.light.background,
-    padding: 16,
     gap: 8,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    borderLeftWidth: 4,
     shadowColor: "#000",
     shadowOpacity: 0.04,
-    shadowRadius: 8,
+    shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
-  cardTitle: {
-    ...Typography.bodyMedium,
-    color: Colors.light.text,
+  tierDot: { width: 8, height: 8, borderRadius: 4 },
+  tierText: { fontSize: 13, fontWeight: "700" },
+
+  section: { marginBottom: 16 },
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#94A3B8",
+    letterSpacing: 1,
+    marginBottom: 8,
   },
-  cardBody: {
-    ...Typography.caption,
-    color: Colors.light.textSecondary,
-    lineHeight: 18,
+
+  transmuteCard: {
+    borderRadius: 16,
+    padding: 16,
+    backgroundColor: "#fff",
+    borderWidth: 1.5,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
   },
-  highlight: {
-    color: Colors.light.tint,
-    fontWeight: "600",
+  transmuteText: { fontSize: 15, color: "#1E293B", lineHeight: 24 },
+  placeholderText: {
+    fontSize: 13,
+    color: "#94A3B8",
+    lineHeight: 20,
+    fontStyle: "italic",
   },
-  examplesList: {
-    gap: 16,
+
+  // OVERLOAD – SimpleListView
+  simpleListCard: {
+    backgroundColor: "#0F172A",
+    borderRadius: 18,
+    padding: 20,
   },
-  exampleItem: {
+  simpleListHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
     gap: 8,
   },
-  exampleImage: {
-    width: "100%",
-    height: 150,
-    borderRadius: 12,
-    backgroundColor: Colors.light.backgroundSecondary,
+  simpleListTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#F9FAFB",
   },
-  exampleText: {
-    ...Typography.caption,
-    color: Colors.light.textSecondary,
-    lineHeight: 18,
+  simpleListItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 12,
   },
-  chipRow: {
+  simpleListBullet: {
+    fontSize: 22,
+    color: "#E5E7EB",
+    marginRight: 8,
+    lineHeight: 26,
+  },
+  simpleListText: {
+    flex: 1,
+    fontSize: 22,
+    lineHeight: 30,
+    color: "#F9FAFB",
+  },
+
+  // OPTIMAL – StandardProseView
+  standardProseContainer: {
+    flexDirection: "row",
+    gap: 16,
+  },
+  standardProseMain: {
+    flex: 3,
+  },
+  standardProseHeading: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#0F172A",
+    marginBottom: 8,
+  },
+  standardProseText: {
+    fontSize: 15,
+    lineHeight: 24,
+    color: "#1E293B",
+  },
+  vocabSidebar: {
+    flex: 1.4,
+    padding: 10,
+    borderRadius: 14,
+    backgroundColor: "#EEF2FF",
+  },
+  vocabSidebarLabel: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#4F46E5",
+    marginBottom: 8,
+    letterSpacing: 0.6,
+  },
+  vocabChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: "#FFFFFF",
+    marginBottom: 6,
+  },
+  vocabChipText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#1E293B",
+  },
+
+  // LOW_LOAD – StoryModeView
+  storyModeContainer: {
+    backgroundColor: "#ECFEFF",
+    borderRadius: 18,
+    padding: 18,
+  },
+  storyHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    gap: 10,
+  },
+  jaxAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#0EA5E9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  jaxAvatarText: {
+    fontSize: 26,
+  },
+  storyTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  storySubtitle: {
+    fontSize: 12,
+    color: "#0369A1",
+  },
+  storyBody: {
+    marginTop: 6,
+    fontSize: 16,
+    lineHeight: 26,
+    color: "#022C22",
+  },
+
+  metricsRow: { flexDirection: "row", gap: 8 },
+
+  keywordsCard: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  keywordsWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
-    marginTop: 4,
+    marginBottom: 10,
   },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+  keywordChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 20,
-    backgroundColor: Colors.light.backgroundSecondary,
+    borderWidth: 1,
   },
-  chipText: {
-    ...Typography.caption,
-    color: Colors.light.tint,
-  },
-  experienceCard: {
-    borderRadius: 16,
-    backgroundColor: Colors.light.backgroundSecondary,
-    padding: 16,
+  keywordText: { fontSize: 12, fontWeight: "700" },
+  keywordCount: { fontSize: 11, color: "#64748B", fontWeight: "600" },
+
+  rawToggle: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
   },
-  experienceTextBlock: {
-    flex: 1,
-    gap: 4,
-  },
-  experienceTitle: {
-    ...Typography.bodyMedium,
-    color: Colors.light.text,
-  },
-  experienceBody: {
-    ...Typography.caption,
-    color: Colors.light.textSecondary,
-  },
-  experienceButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: Colors.light.tint,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  experienceButtonText: {
-    ...Typography.caption,
-    color: Colors.light.background,
-    fontWeight: "500",
-  },
-  difficultyRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 8,
-  },
-  difficultyChip: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 8,
+  rawCard: {
+    borderRadius: 14,
+    padding: 14,
+    backgroundColor: "#F8FAFC",
     borderWidth: 1,
-    borderColor: Colors.light.border,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: Colors.light.backgroundSecondary,
+    borderColor: "#E2E8F0",
   },
-  difficultyChipActive: {
-    borderColor: Colors.light.tint,
-    backgroundColor: Colors.light.background,
-  },
-  difficultyText: {
-    ...Typography.caption,
-    color: Colors.light.textSecondary,
-  },
-  difficultyTextActive: {
-    color: Colors.light.tint,
-    fontWeight: "500",
-  },
-  footer: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: Colors.light.backgroundSecondary,
-  },
-  quizButton: {
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: Colors.light.tint,
+  rawText: { fontSize: 13, color: "#475569", lineHeight: 20 },
+
+  demoCard: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#5B3FA6",
+    borderRadius: 20,
+    padding: 18,
+    marginTop: 4,
+    shadowColor: "#5B3FA6",
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  demoLeft: { flexDirection: "row", alignItems: "center", gap: 14 },
+  demoEmoji: { fontSize: 32 },
+  demoTitle: { fontSize: 16, fontWeight: "800", color: "#fff" },
+  demoSub: { fontSize: 11, color: "rgba(255,255,255,0.7)" },
+  demoArrow: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
-  },
-  quizButtonText: {
-    ...Typography.bodyMedium,
-    color: Colors.light.background,
-    fontWeight: "600",
-  },
-  quizButtonDisabled: {
-    opacity: 0.6,
   },
 });

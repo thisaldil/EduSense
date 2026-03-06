@@ -1,311 +1,988 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Video } from "expo-av";
-import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Pressable,
+  ActivityIndicator,
   SafeAreaView,
   ScrollView,
+  Pressable,
   StyleSheet,
   Text,
   View,
+  FlatList,
+  Dimensions,
 } from "react-native";
+import { useLocalSearchParams } from "expo-router";
+import { AnimationCanvasNative } from "@/components/AnimationCanvasNative";
+import { animationApi } from "@/services/api";
+import { getLatestTransmutedContent } from "@/services/lessons";
+import { useNeuroState } from "@/context/NeuroStateContext";
+import { useAnalyticsLogger } from "@/context/AnalyticsLoggerContext";
+import { useAuth } from "@/contexts/AuthContext";
 
-import { Colors, Typography } from "@/constants/theme";
+type AnimationScript = animationApi.NeuroAdaptiveAnimationScript;
+type Scene = AnimationScript["scenes"][0];
 
-type Concept = {
-  id: string;
-  title: string;
-  microLabel: string;
-  description: string;
-  audioScript: string;
-  hapticsLabel: string;
+// ─── State config ──────────────────────────────────────────────────────────
+const STATE_CONFIG = {
+  LOW: { label: "Low Load · Deep Dive", color: "#3B82F6", bg: "#EFF6FF" },
+  OPTIMAL: { label: "Optimal · Balanced", color: "#16A34A", bg: "#F0FDF4" },
+  OVERLOAD: {
+    label: "High Load · Simplified",
+    color: "#EA580C",
+    bg: "#FFF7ED",
+  },
+} as const;
+
+// ─── CTML principle chips ─────────────────────────────────────────────────────
+const PRINCIPLE_COLORS: Record<string, string> = {
+  coherence: "#2563EB",
+  signaling: "#7C3AED",
+  temporal_contiguity: "#0891B2",
+  redundancy: "#059669",
+  segmenting: "#D97706",
+  personalization: "#DB2777",
 };
 
-const CONCEPTS: Concept[] = [
-  {
-    id: "gravity-1",
-    title: "What is gravity?",
-    microLabel: "What is gravity?",
-    description:
-      "Gravity is a force that pulls objects toward each other. Here, you’ll feel a gentle pull toward Earth.",
-    audioScript: "Gravity is a force that attracts objects toward each other.",
-    hapticsLabel: "Gentle, continuous vibration for concept introduction.",
+function PrincipleChip({ label }: { label: string }) {
+  const color = PRINCIPLE_COLORS[label] ?? "#64748B";
+  return (
+    <View
+      style={[
+        chipSt.chip,
+        { backgroundColor: color + "18", borderColor: color + "44" },
+      ]}
+    >
+      <Text style={[chipSt.text, { color }]}>{label}</Text>
+    </View>
+  );
+}
+const chipSt = StyleSheet.create({
+  chip: {
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    marginRight: 3,
+    marginBottom: 3,
   },
-  {
-    id: "gravity-2",
-    title: "Direction of force",
-    microLabel: "Direction of force",
-    description:
-      "Gravity pulls objects toward the center of the Earth. Notice the downward direction of the force.",
-    audioScript: "Gravity pulls objects toward the center of the Earth.",
-    hapticsLabel: "Pulsing vibration with a downward rhythm.",
+  text: {
+    fontSize: 7,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
   },
-  {
-    id: "gravity-3",
-    title: "Effect on falling objects",
-    microLabel: "Effect on falling objects",
-    description:
-      "When you drop an object, gravity accelerates it toward the ground. The longer it falls, the faster it moves.",
-    audioScript:
-      "As objects fall, gravity makes them speed up until something stops them.",
-    hapticsLabel: "Increasing pulse speed as the object falls.",
-  },
-  {
-    id: "gravity-4",
-    title: "Strength variation",
-    microLabel: "Strength variation",
-    description:
-      "Gravity is stronger when objects are closer or more massive. Far away from Earth, gravity feels weaker.",
-    audioScript:
-      "Gravity gets weaker with distance, but never fully disappears.",
-    hapticsLabel: "Stronger vibrations near Earth, softer further away.",
-  },
-] as const;
+});
 
+// ─── Scene thumbnail ──────────────────────────────────────────────────────────
+function SceneThumbnail({
+  scene,
+  index,
+  isActive,
+  isDone,
+  onPress,
+}: {
+  scene: Scene;
+  index: number;
+  isActive: boolean;
+  isDone: boolean;
+  onPress: () => void;
+}) {
+  const meta = (scene as any).meta ?? {};
+  const principles: string[] = meta.ctmlPrinciples ?? [];
+  const salience: string = meta.salienceLevel ?? "low";
+  const salienceLevels = ["low", "moderate", "rich"];
+  const salienceIdx = salienceLevels.indexOf(salience);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[
+        thumbSt.card,
+        isActive && thumbSt.cardActive,
+        isDone && thumbSt.cardDone,
+      ]}
+    >
+      {/* number badge */}
+      <View
+        style={[
+          thumbSt.badge,
+          isActive && thumbSt.badgeActive,
+          isDone && thumbSt.badgeDone,
+        ]}
+      >
+        <Text style={[thumbSt.badgeText, isActive && thumbSt.badgeTextActive]}>
+          {isDone ? "✓" : index + 1}
+        </Text>
+      </View>
+
+      {/* active pulse dot */}
+      {isActive && <View style={thumbSt.pulse} />}
+
+      {/* scene text */}
+      <Text
+        numberOfLines={2}
+        style={[
+          thumbSt.text,
+          isActive && thumbSt.textActive,
+          isDone && thumbSt.textDone,
+        ]}
+      >
+        {scene.text || `Scene ${index + 1}`}
+      </Text>
+
+      {/* salience bar */}
+      <View style={thumbSt.salienceRow}>
+        <Text style={thumbSt.salienceLabel}>salience</Text>
+        <View style={thumbSt.bars}>
+          {salienceLevels.map((l, i) => (
+            <View
+              key={l}
+              style={[
+                thumbSt.bar,
+                {
+                  backgroundColor:
+                    i === salienceIdx
+                      ? "#2563EB"
+                      : i < salienceIdx
+                        ? "#93C5FD"
+                        : "#E2E8F0",
+                },
+              ]}
+            />
+          ))}
+        </View>
+      </View>
+
+      {/* CTML tag */}
+      {principles.length > 0 && (
+        <View style={thumbSt.chips}>
+          <PrincipleChip label={principles[0]} />
+          {principles.length > 1 && (
+            <Text style={thumbSt.more}>+{principles.length - 1}</Text>
+          )}
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+const thumbSt = StyleSheet.create({
+  card: {
+    width: 128,
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    marginRight: 10,
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+  cardActive: {
+    borderColor: "#2563EB",
+    backgroundColor: "#EFF6FF",
+    shadowColor: "#2563EB",
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  cardDone: { opacity: 0.5, borderColor: "#CBD5E1" },
+  badge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F1F5F9",
+    marginBottom: 6,
+  },
+  badgeActive: { backgroundColor: "#2563EB" },
+  badgeDone: { backgroundColor: "#DCFCE7" },
+  badgeText: { fontSize: 10, fontWeight: "700", color: "#64748B" },
+  badgeTextActive: { color: "#FFFFFF" },
+  pulse: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: "#2563EB",
+  },
+  text: {
+    fontSize: 11,
+    color: "#475569",
+    lineHeight: 15,
+    fontWeight: "500",
+    marginBottom: 6,
+  },
+  textActive: { color: "#1E3A8A", fontWeight: "700" },
+  textDone: { color: "#94A3B8" },
+  salienceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginBottom: 5,
+  },
+  salienceLabel: {
+    fontSize: 7,
+    color: "#94A3B8",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  bars: { flexDirection: "row", gap: 2 },
+  bar: { width: 14, height: 3, borderRadius: 2 },
+  chips: { flexDirection: "row", alignItems: "center", flexWrap: "wrap" },
+  more: { fontSize: 8, color: "#94A3B8", marginLeft: 2 },
+});
+
+// ─── Neuro equation strip ─────────────────────────────────────────────────────
+function NeuroEquation({ cognitiveState }: { cognitiveState: string }) {
+  const score =
+    cognitiveState === "OVERLOAD"
+      ? 0.85
+      : cognitiveState === "OPTIMAL"
+        ? 0.4
+        : 0.1;
+  const speed = (1 - score).toFixed(2);
+  const density =
+    cognitiveState === "OVERLOAD"
+      ? "Minimal"
+      : cognitiveState === "OPTIMAL"
+        ? "Moderate"
+        : "Rich";
+  const principle =
+    cognitiveState === "OVERLOAD"
+      ? "Coherence"
+      : cognitiveState === "OPTIMAL"
+        ? "Segmenting"
+        : "Personalization";
+
+  return (
+    <View style={eqSt.row}>
+      {[
+        { label: "Δt EQUATION", val: `${speed}× (1 − ${score})` },
+        { label: "VISUAL DENSITY", val: density },
+        { label: "CTML PRINCIPLE", val: principle },
+      ].map((item) => (
+        <View key={item.label} style={eqSt.pill}>
+          <Text style={eqSt.label}>{item.label}</Text>
+          <Text style={eqSt.val}>{item.val}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+const eqSt = StyleSheet.create({
+  row: { flexDirection: "row", gap: 8 },
+  pill: {
+    flex: 1,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 10,
+    padding: 9,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  label: {
+    fontSize: 7,
+    fontWeight: "800",
+    color: "#94A3B8",
+    letterSpacing: 1,
+    marginBottom: 3,
+    textTransform: "uppercase",
+  },
+  val: { fontSize: 10, fontWeight: "700", color: "#1E293B" },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useNeuroAdaptiveScript
+// ─────────────────────────────────────────────────────────────────────────────
+function useNeuroAdaptiveScript({
+  lessonId,
+  concept,
+  studentId,
+  sessionId,
+  cognitiveState,
+}: {
+  lessonId?: string;
+  concept?: string;
+  studentId?: string;
+  sessionId?: string | null;
+  cognitiveState?: string;
+}) {
+  const [script, setScript] = useState<AnimationScript | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const lastStateRef = useRef<string | undefined>(undefined);
+
+  const fetchScript = useCallback(async () => {
+    if (!studentId) {
+      setScript(null);
+      return;
+    }
+    if (
+      lastStateRef.current === cognitiveState &&
+      lastStateRef.current !== undefined
+    )
+      return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      if (!cognitiveState) {
+        const existing = await animationApi.getLatestNeuroAdaptiveScript(
+          studentId,
+          sessionId ?? undefined,
+        );
+        if (existing) {
+          setScript(existing.script);
+          return;
+        }
+      }
+
+      const transmuted = await getLatestTransmutedContent(studentId, lessonId);
+      if (
+        !transmuted?.output?.transmuted_text ||
+        !transmuted?.input?.cognitive_state
+      )
+        throw new Error(
+          "No neuro-adaptive transmuted content found for this lesson.",
+        );
+
+      const resolvedState = cognitiveState ?? transmuted.input.cognitive_state;
+      const animation = await animationApi.postNeuroAdaptiveScript({
+        transmutedText: transmuted.output.transmuted_text,
+        cognitiveState: resolvedState as "OVERLOAD" | "OPTIMAL" | "LOW_LOAD",
+        concept: concept || transmuted.topic || transmuted.lesson_title,
+        studentId,
+        lessonId,
+        sessionId: sessionId ?? undefined,
+      });
+
+      lastStateRef.current = cognitiveState;
+      setScript(animation.script);
+    } catch (err: any) {
+      setError(
+        err?.message || "Unable to generate a visual explanation right now.",
+      );
+      setScript(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [lessonId, studentId, sessionId, concept, cognitiveState]);
+
+  useEffect(() => {
+    fetchScript();
+  }, [fetchScript]);
+  return { script, loading, error, refetch: fetchScript };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LessonAnimationPanel
+// ─────────────────────────────────────────────────────────────────────────────
+export function LessonAnimationPanel({
+  script,
+  loading,
+  error,
+  onRetry,
+  cognitiveState = "OVERLOAD",
+}: {
+  script: AnimationScript | null;
+  loading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
+  cognitiveState?: string;
+}) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [activeSceneIdx, setActiveSceneIdx] = useState(0);
+  const listRef = useRef<FlatList>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Reset on new script
+  useEffect(() => {
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setActiveSceneIdx(0);
+  }, [script]);
+
+  // Ticker
+  useEffect(() => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    if (!script || !isPlaying) return;
+
+    intervalRef.current = setInterval(() => {
+      setCurrentTime((t) => {
+        const next = Math.min(script.duration, t + 100);
+        const idx = script.scenes.findIndex(
+          (s) => next >= s.startTime && next < s.startTime + s.duration,
+        );
+        if (idx !== -1 && idx !== activeSceneIdx) {
+          setActiveSceneIdx(idx);
+          try {
+            listRef.current?.scrollToIndex({
+              index: idx,
+              animated: true,
+              viewOffset: 10,
+            });
+          } catch {}
+        }
+        if (next >= script.duration) setIsPlaying(false);
+        return next;
+      });
+    }, 100);
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [script, isPlaying, activeSceneIdx]);
+
+  const jumpToScene = (idx: number) => {
+    if (!script) return;
+    setActiveSceneIdx(idx);
+    setCurrentTime(script.scenes[idx].startTime + 500);
+    try {
+      listRef.current?.scrollToIndex({
+        index: idx,
+        animated: true,
+        viewOffset: 10,
+      });
+    } catch {}
+  };
+
+  const progress = script
+    ? Math.min(100, (currentTime / script.duration) * 100)
+    : 0;
+  const formatTime = (ms: number) => {
+    const s = Math.floor(ms / 1000);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  };
+
+  const currentScene = script?.scenes[activeSceneIdx] ?? null;
+  const stateConf =
+    STATE_CONFIG[cognitiveState as keyof typeof STATE_CONFIG] ??
+    STATE_CONFIG.OVERLOAD;
+  const speedLabel =
+    cognitiveState === "OVERLOAD"
+      ? "0.4×"
+      : cognitiveState === "OPTIMAL"
+        ? "0.75×"
+        : "1.2×";
+
+  return (
+    <View style={panelSt.root}>
+      {/* ── Header row ── */}
+      {script && (
+        <View style={panelSt.headerRow}>
+          <View
+            style={[
+              panelSt.stateBadge,
+              {
+                backgroundColor: stateConf.bg,
+                borderColor: stateConf.color + "55",
+              },
+            ]}
+          >
+            <View
+              style={[panelSt.stateDot, { backgroundColor: stateConf.color }]}
+            />
+            <Text style={[panelSt.stateLabel, { color: stateConf.color }]}>
+              {cognitiveState}
+            </Text>
+          </View>
+          <Text style={panelSt.titleText} numberOfLines={1}>
+            {script.title || "Animation"}
+          </Text>
+          <View style={panelSt.timerBox}>
+            <Text style={panelSt.timerText}>
+              {formatTime(currentTime)} / {formatTime(script.duration)}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* ── Main canvas ── */}
+      <View style={panelSt.canvasWrap}>
+        {loading && (
+          <View style={panelSt.overlay}>
+            <ActivityIndicator size="large" color="#2563EB" />
+            <Text style={panelSt.overlayTitle}>Adapting visuals…</Text>
+            <Text style={panelSt.overlaySub}>
+              Applying {stateConf.label.split("·")[1]?.trim() ?? ""} principle
+            </Text>
+          </View>
+        )}
+        {error && !loading && (
+          <View style={panelSt.overlay}>
+            <Text style={{ fontSize: 34, marginBottom: 8 }}>⚠️</Text>
+            <Text style={panelSt.errorTitle}>Animation Error</Text>
+            <Text style={panelSt.errorMsg}>{error}</Text>
+            {onRetry && (
+              <Pressable style={panelSt.retryBtn} onPress={onRetry}>
+                <Text style={panelSt.retryText}>Try again</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
+        {!script && !error && !loading && (
+          <View style={panelSt.overlay}>
+            <Text style={{ fontSize: 42, marginBottom: 8, opacity: 0.45 }}>
+              🎬
+            </Text>
+            <Text style={panelSt.emptyTitle}>No Animation Loaded</Text>
+            <Text style={panelSt.emptySub}>
+              Enter a concept to generate an animation
+            </Text>
+          </View>
+        )}
+
+        {script && !error && (
+          <AnimationCanvasNative isPlaying={isPlaying} script={script} />
+        )}
+
+        {/* Scene label overlay */}
+        {script && !loading && !error && currentScene?.text && (
+          <View style={panelSt.sceneOverlay} pointerEvents="none">
+            <View style={panelSt.sceneNumPill}>
+              <Text style={panelSt.sceneNumText}>
+                {activeSceneIdx + 1}/{script.scenes.length}
+              </Text>
+            </View>
+            <Text style={panelSt.sceneOverlayText} numberOfLines={1}>
+              {currentScene.text}
+            </Text>
+          </View>
+        )}
+
+        {/* Bottom progress bar */}
+        {script && (
+          <View style={panelSt.progressBar}>
+            <View
+              style={[panelSt.progressFill, { width: `${progress}%` as any }]}
+            />
+          </View>
+        )}
+      </View>
+
+      {/* ── Controls ── */}
+      {script && (
+        <View style={panelSt.controls}>
+          <Pressable
+            style={[panelSt.btn, isPlaying && panelSt.btnActive]}
+            onPress={() => {
+              if (isPlaying) {
+                setIsPlaying(false);
+              } else {
+                if (currentTime >= (script.duration ?? 0)) setCurrentTime(0);
+                setIsPlaying(true);
+              }
+            }}
+          >
+            <Text style={[panelSt.btnText, isPlaying && panelSt.btnTextActive]}>
+              {isPlaying ? "⏸  Pause" : "▶  Play"}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={panelSt.btn}
+            onPress={() => {
+              setCurrentTime(0);
+              setActiveSceneIdx(0);
+              setIsPlaying(true);
+            }}
+          >
+            <Text style={panelSt.btnText}>↺ Reset</Text>
+          </Pressable>
+          <View style={panelSt.speedBox}>
+            <Text style={panelSt.speedBoxLabel}>SPEED</Text>
+            <Text style={panelSt.speedBoxVal}>{speedLabel}</Text>
+          </View>
+        </View>
+      )}
+
+      {/* ── Neuro equation ── */}
+      {script && <NeuroEquation cognitiveState={cognitiveState} />}
+
+      {/* ── Scene thumbnail strip ── */}
+      {script && script.scenes.length > 0 && (
+        <View style={panelSt.stripWrap}>
+          <View style={panelSt.stripHead}>
+            <Text style={panelSt.stripTitle}>SCENES</Text>
+            <Text style={panelSt.stripSub}>
+              Tap to jump · Temporal Contiguity — one bullet at a time
+            </Text>
+          </View>
+          <FlatList
+            ref={listRef}
+            data={script.scenes}
+            horizontal
+            keyExtractor={(_, i) => String(i)}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+            }}
+            onScrollToIndexFailed={() => {}}
+            renderItem={({ item, index }) => (
+              <SceneThumbnail
+                scene={item}
+                index={index}
+                isActive={index === activeSceneIdx}
+                isDone={index < activeSceneIdx}
+                onPress={() => jumpToScene(index)}
+              />
+            )}
+          />
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ─── Panel styles ──────────────────────────────────────────────────────────────
+const panelSt = StyleSheet.create({
+  root: { width: "100%", gap: 12 },
+
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 2,
+  },
+  stateBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  stateDot: { width: 7, height: 7, borderRadius: 3.5 },
+  stateLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 0.5 },
+  titleText: { flex: 1, fontSize: 13, fontWeight: "700", color: "#1E293B" },
+  timerBox: {
+    backgroundColor: "#F1F5F9",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  timerText: { fontSize: 10, fontWeight: "600", color: "#64748B" },
+
+  canvasWrap: {
+    width: "100%",
+    height: 260,
+    borderRadius: 18,
+    overflow: "hidden",
+    backgroundColor: "#F8FAFF",
+    borderWidth: 1.5,
+    borderColor: "#DBEAFE",
+    shadowColor: "#2563EB",
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+    backgroundColor: "rgba(248,250,255,0.97)",
+    zIndex: 10,
+  },
+  overlayTitle: {
+    marginTop: 12,
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1E3A8A",
+  },
+  overlaySub: {
+    marginTop: 4,
+    fontSize: 12,
+    color: "#64748B",
+    textAlign: "center",
+  },
+  errorTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#B91C1C",
+    marginBottom: 4,
+  },
+  errorMsg: { fontSize: 13, color: "#64748B", textAlign: "center" },
+  retryBtn: {
+    marginTop: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: "#2563EB",
+    borderRadius: 10,
+  },
+  retryText: { fontSize: 13, fontWeight: "700", color: "#FFFFFF" },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1E293B",
+    textAlign: "center",
+  },
+  emptySub: {
+    marginTop: 4,
+    fontSize: 12,
+    color: "#94A3B8",
+    textAlign: "center",
+  },
+
+  sceneOverlay: {
+    position: "absolute",
+    bottom: 12,
+    left: 12,
+    right: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(255,255,255,0.90)",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    zIndex: 5,
+    borderWidth: 1,
+    borderColor: "rgba(37,99,235,0.15)",
+  },
+  sceneNumPill: {
+    backgroundColor: "#2563EB",
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  sceneNumText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: 0.5,
+  },
+  sceneOverlayText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#1E293B",
+  },
+
+  progressBar: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: "rgba(37,99,235,0.12)",
+  },
+  progressFill: { height: "100%", backgroundColor: "#2563EB", borderRadius: 2 },
+
+  controls: { flexDirection: "row", gap: 10, alignItems: "center" },
+  btn: {
+    flex: 1,
+    height: 42,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+  },
+  btnActive: {
+    backgroundColor: "#2563EB",
+    borderColor: "#2563EB",
+    shadowColor: "#2563EB",
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+  },
+  btnText: { fontSize: 13, fontWeight: "700", color: "#374151" },
+  btnTextActive: { color: "#FFFFFF" },
+  speedBox: {
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: "#F1F5F9",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  speedBoxLabel: {
+    fontSize: 7,
+    color: "#94A3B8",
+    letterSpacing: 1.5,
+    fontWeight: "800",
+  },
+  speedBoxVal: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#2563EB",
+    marginTop: 1,
+  },
+
+  stripWrap: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    paddingTop: 12,
+    paddingBottom: 6,
+    shadowColor: "#000",
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  stripHead: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    paddingHorizontal: 14,
+    marginBottom: 2,
+    gap: 8,
+  },
+  stripTitle: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#1E293B",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+  },
+  stripSub: { fontSize: 9, color: "#94A3B8", flex: 1 },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LessonPlayerScreen
+// ─────────────────────────────────────────────────────────────────────────────
 export default function LessonPlayerScreen() {
   const params = useLocalSearchParams<{ lesson_id?: string }>();
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [audioOn, setAudioOn] = useState(true);
-  const [hapticOn, setHapticOn] = useState(true);
-  const [autoPlay, setAutoPlay] = useState(false);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const { user } = useAuth();
+  const {
+    state: neuroState,
+    forceStateOverride,
+    updateStateFromPrediction,
+  } = useNeuroState();
+  const { logInteraction, triggerPrediction } = useAnalyticsLogger();
 
-  const totalSteps = CONCEPTS.length;
-  const currentStep = currentIndex + 1;
-  const progressPercent = Math.round((currentStep / totalSteps) * 100);
+  const { script, loading, error, refetch } = useNeuroAdaptiveScript({
+    lessonId: params.lesson_id,
+    studentId: user?.id,
+    sessionId: undefined,
+    cognitiveState: neuroState.currentState,
+  });
 
-  const currentConcept = CONCEPTS[currentIndex];
-  const isLastStep = currentIndex === CONCEPTS.length - 1;
-
-  const videoRef = useRef<Video | null>(null);
-
-  // Auto-advance when playing with autoplay on
   useEffect(() => {
-    if (!isPlaying || !autoPlay) return;
-    const id = setInterval(() => {
-      setCurrentIndex((prev) => (prev < CONCEPTS.length - 1 ? prev + 1 : prev));
-    }, 8000);
-    return () => clearInterval(id);
-  }, [isPlaying, autoPlay]);
+    logInteraction("SECTION_START", {
+      screen: "lesson-player",
+      lesson_id: params.lesson_id,
+    });
+    return () =>
+      logInteraction("SECTION_END", {
+        screen: "lesson-player",
+        lesson_id: params.lesson_id,
+      });
+  }, [logInteraction, params.lesson_id]);
 
-  const goToNext = () => {
-    setCurrentIndex((prev) => (prev < CONCEPTS.length - 1 ? prev + 1 : prev));
-  };
-
-  const goToPrevious = () => {
-    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : prev));
-  };
-
-  const togglePlay = () => {
-    setIsPlaying((prev) => {
-      const next = !prev;
-      if (next) {
-        videoRef.current?.playAsync();
-      } else {
-        videoRef.current?.pauseAsync();
-      }
-      return next;
+  const handleForceState = (newState: "LOW_LOAD" | "OPTIMAL" | "OVERLOAD") => {
+    forceStateOverride(newState);
+    logInteraction("NAV_FORWARD", {
+      screen: "lesson-player",
+      forced_state: newState,
     });
   };
 
+  const handleNextSection = async () => {
+    try {
+      logInteraction("SECTION_END", {
+        screen: "lesson-player",
+        reason: "next_section",
+      });
+      const prediction = await triggerPrediction();
+      if (prediction) updateStateFromPrediction(prediction);
+    } catch {
+      /* keep current */
+    }
+  };
+
+  const stateConf =
+    STATE_CONFIG[neuroState.currentState as keyof typeof STATE_CONFIG] ??
+    STATE_CONFIG.OPTIMAL;
+
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={screenSt.safe}>
       <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        style={{ flex: 1 }}
+        contentContainerStyle={screenSt.scroll}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.appBar}>
-            <Pressable
-              style={styles.backButton}
-              onPress={() => router.back()}
-              hitSlop={20}
-            >
-              <Ionicons
-                name="chevron-back"
-                size={24}
-                color={Colors.light.text}
-              />
-            </Pressable>
-            <View style={styles.headerTextBlock}>
-              <Text style={styles.headerTitle}>Gravity</Text>
-              <Text style={styles.headerSubtitle}>
-                Step {currentStep} of {totalSteps}
+        {/* Cognitive state header */}
+        {/* <View style={screenSt.neuroCard}>
+          <View style={screenSt.neuroTopRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={screenSt.neuroSmall}>Cognitive Load</Text>
+              <Text style={[screenSt.neuroState, { color: stateConf.color }]}>
+                {stateConf.label}
               </Text>
             </View>
-          </View>
-
-          <View style={styles.progressContainer}>
-            <View style={styles.progressBar}>
-              <View
-                style={[styles.progressFill, { width: `${progressPercent}%` }]}
-              />
-            </View>
-            <Text style={styles.progressText}>{progressPercent}%</Text>
-          </View>
-        </View>
-
-        {/* Main Content */}
-        <View style={styles.main}>
-          {/* Visual Hero - Video */}
-          <View style={styles.visualHero}>
-            <Video
-              ref={videoRef}
-              source={require("@/assets/videos/sample-lesson.mp4")}
-              style={StyleSheet.absoluteFillObject}
-              resizeMode="contain"
-              isLooping
-              shouldPlay={false}
-              isMuted={!audioOn}
-            />
-            <View style={styles.interactiveBadge}>
-              <View style={styles.badgeDot} />
-              <Text style={styles.badgeText}>Interactive demo</Text>
-            </View>
-          </View>
-
-          {/* Play Control */}
-          <Pressable
-            style={[styles.playControl, isPlaying && styles.playControlActive]}
-            onPress={togglePlay}
-          >
-            <Ionicons
-              name={isPlaying ? "pause" : "play"}
-              size={28}
-              color={isPlaying ? "#FFFFFF" : Colors.light.tint}
-            />
-            <Text
-              style={[styles.playLabel, isPlaying && styles.playLabelActive]}
-            >
-              {isPlaying ? "Playing" : "Play Concept"}
-            </Text>
-          </Pressable>
-
-          {/* Sensory Toggles */}
-          <View style={styles.sensoryControls}>
-            <Pressable
-              style={[styles.toggle, hapticOn && styles.toggleActive]}
-              onPress={() => setHapticOn((v) => !v)}
-            >
-              <Ionicons
-                name="pulse"
-                size={20}
-                color={hapticOn ? "#FFFFFF" : Colors.light.textSecondary}
-              />
-              <Text
-                style={[
-                  styles.toggleLabel,
-                  hapticOn && styles.toggleLabelActive,
-                ]}
-              >
-                Haptics
-              </Text>
-            </Pressable>
-
-            <Pressable
-              style={[styles.toggle, audioOn && styles.toggleActive]}
-              onPress={() => setAudioOn((v) => !v)}
-            >
-              <Ionicons
-                name="volume-high"
-                size={20}
-                color={audioOn ? "#FFFFFF" : Colors.light.textSecondary}
-              />
-              <Text
-                style={[
-                  styles.toggleLabel,
-                  audioOn && styles.toggleLabelActive,
-                ]}
-              >
-                Audio
-              </Text>
-            </Pressable>
-          </View>
-
-          {/* Concept Details */}
-          <View style={styles.conceptCard}>
-            <Text style={styles.conceptTitle}>{currentConcept.title}</Text>
-            <Text style={styles.conceptDescription}>
-              {currentConcept.description}
-            </Text>
-          </View>
-
-          {/* Navigation */}
-          <View style={styles.navigation}>
-            <Pressable
+            <View
               style={[
-                styles.navButton,
-                currentIndex === 0 && styles.navButtonDisabled,
+                screenSt.neuroPill,
+                {
+                  backgroundColor: stateConf.bg,
+                  borderColor: stateConf.color + "55",
+                },
               ]}
-              disabled={currentIndex === 0}
-              onPress={goToPrevious}
             >
-              <Ionicons
-                name="chevron-back"
-                size={20}
-                color={
-                  currentIndex === 0
-                    ? Colors.light.textSecondary
-                    : Colors.light.tint
-                }
+              <View
+                style={[
+                  screenSt.neuroDot,
+                  { backgroundColor: stateConf.color },
+                ]}
               />
               <Text
-                style={[
-                  styles.navLabel,
-                  currentIndex === 0 && styles.navLabelDisabled,
-                ]}
+                style={[screenSt.neuroPillText, { color: stateConf.color }]}
               >
-                Previous
+                {neuroState.currentState}
               </Text>
-            </Pressable>
-
+              {neuroState.isForced && (
+                <Text style={[screenSt.forcedTag, { color: stateConf.color }]}>
+                  FORCED
+                </Text>
+              )}
+            </View>
+          </View>
+          <View style={screenSt.neuroActions}>
             <Pressable
-              style={[styles.navButton, isLastStep && styles.navButtonPrimary]}
-              onPress={() => {
-                if (isLastStep) {
-                  router.push({
-                    pathname: "/lessons/concept-explore",
-                    params: { lesson_id: params.lesson_id },
-                  });
-                } else {
-                  goToNext();
-                }
-              }}
+              style={screenSt.btnDark}
+              onPress={() => handleForceState("OVERLOAD")}
             >
-              <Text
-                style={[
-                  styles.navLabel,
-                  isLastStep ? styles.navLabelPrimary : styles.navLabel,
-                ]}
-              >
-                {isLastStep ? "Finish" : "Next"}
-              </Text>
-              <Ionicons
-                name={isLastStep ? "checkmark" : "chevron-forward"}
-                size={20}
-                color={isLastStep ? "#FFFFFF" : Colors.light.tint}
-              />
+              <Text style={screenSt.btnDarkText}>🧠 Simplify me</Text>
+            </Pressable>
+            <Pressable
+              style={screenSt.btnGhost}
+              onPress={() => handleForceState("LOW_LOAD")}
+            >
+              <Text style={screenSt.btnGhostText}>🔍 Deep dive</Text>
             </Pressable>
           </View>
+        </View> */}
 
-          {/* Auto Play Toggle */}
-          <Pressable
-            style={[styles.autoToggle, autoPlay && styles.autoToggleActive]}
-            onPress={() => setAutoPlay((v) => !v)}
-          >
-            <Ionicons
-              name="repeat-outline"
-              size={20}
-              color={autoPlay ? Colors.light.tint : Colors.light.textSecondary}
-            />
-            <Text
-              style={[styles.autoLabel, autoPlay && styles.autoLabelActive]}
-            >
-              Auto-advance to next
-            </Text>
+        {/* Animation panel */}
+        <LessonAnimationPanel
+          script={script}
+          loading={loading}
+          error={error}
+          onRetry={refetch}
+          cognitiveState={neuroState.currentState}
+        />
+
+        {/* Next section */}
+        <View style={screenSt.footer}>
+          <Pressable style={screenSt.nextBtn} onPress={handleNextSection}>
+            <Text style={screenSt.nextBtnText}>Next section →</Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -313,245 +990,81 @@ export default function LessonPlayerScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.light.backgroundSecondary,
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 32,
-  },
-  header: {
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 24,
-    backgroundColor: Colors.light.background,
-  },
-  appBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 16,
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.light.backgroundSecondary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerTextBlock: {
-    flex: 1,
-  },
-  headerTitle: {
-    ...Typography.h2,
-    color: Colors.light.text,
-    marginBottom: 4,
-  },
-  headerSubtitle: {
-    ...Typography.caption,
-    color: Colors.light.textSecondary,
-  },
-  progressContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginTop: 16,
-  },
-  progressBar: {
-    flex: 1,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: Colors.light.border,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: Colors.light.tint,
-  },
-  progressText: {
-    ...Typography.small,
-    fontWeight: "600",
-    color: Colors.light.tint,
-    minWidth: 40,
-  },
-  main: {
-    paddingHorizontal: 24,
-    gap: 32,
-  },
-  visualHero: {
-    width: "100%",
-    aspectRatio: 16 / 9,
-    borderRadius: 24,
-    overflow: "hidden",
-    position: "relative",
-    backgroundColor: "#000000",
-  },
-  video: {
-    width: "100%",
-    height: "100%",
-  },
-  visualIconContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  interactiveBadge: {
-    position: "absolute",
-    top: 16,
-    right: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+const screenSt = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: "#F1F5F9" },
+  scroll: { padding: 16, paddingBottom: 48, gap: 14 },
+  neuroCard: {
+    backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    backdropFilter: "blur(10px)",
-  },
-  badgeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.brightOrange,
-  },
-  badgeText: {
-    ...Typography.small,
-    color: "#FFFFFF",
-    fontWeight: "500",
-  },
-  playControl: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: Colors.light.background,
+    padding: 16,
     borderWidth: 1,
-    borderColor: Colors.light.border,
-  },
-  playControlActive: {
-    backgroundColor: Colors.light.tint,
-    borderColor: Colors.light.tint,
-  },
-  playLabel: {
-    ...Typography.bodyMedium,
-    color: Colors.light.textSecondary,
-  },
-  playLabelActive: {
-    color: "#FFFFFF",
-    fontWeight: "600",
-  },
-  sensoryControls: {
-    flexDirection: "row",
-    gap: 16,
-  },
-  toggle: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: Colors.light.background,
-    borderWidth: 1,
-    borderColor: Colors.light.border,
-  },
-  toggleActive: {
-    backgroundColor: Colors.light.tint,
-    borderColor: Colors.light.tint,
-  },
-  toggleLabel: {
-    ...Typography.label,
-    color: Colors.light.textSecondary,
-  },
-  toggleLabelActive: {
-    color: "#FFFFFF",
-    fontWeight: "600",
-  },
-  conceptCard: {
-    backgroundColor: Colors.light.background,
-    borderRadius: 20,
-    padding: 24,
-    gap: 12,
+    borderColor: "#E2E8F0",
     shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
-  conceptTitle: {
-    ...Typography.h3,
-    color: Colors.light.text,
+  neuroTopRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  neuroSmall: {
+    fontSize: 10,
+    color: "#94A3B8",
+    textTransform: "uppercase",
+    letterSpacing: 1,
   },
-  conceptDescription: {
-    ...Typography.body,
-    color: Colors.light.textSecondary,
-    lineHeight: 24,
-  },
-  navigation: {
+  neuroState: { fontSize: 16, fontWeight: "700", marginTop: 2 },
+  neuroPill: {
     flexDirection: "row",
-    gap: 16,
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
   },
-  navButton: {
+  neuroDot: { width: 8, height: 8, borderRadius: 4 },
+  neuroPillText: { fontSize: 11, fontWeight: "700" },
+  forcedTag: {
+    fontSize: 7,
+    fontWeight: "800",
+    letterSpacing: 1,
+    marginLeft: 2,
+    opacity: 0.7,
+  },
+  neuroActions: { flexDirection: "row", gap: 10 },
+  btnDark: {
     flex: 1,
-    flexDirection: "row",
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: "#111827",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: Colors.light.background,
-    borderWidth: 1,
-    borderColor: Colors.light.border,
   },
-  navButtonDisabled: {
-    borderColor: Colors.light.border,
-    opacity: 0.5,
-  },
-  navButtonPrimary: {
-    backgroundColor: Colors.light.tint,
-    borderColor: Colors.light.tint,
-  },
-  navLabel: {
-    ...Typography.bodyMedium,
-    color: Colors.light.textSecondary,
-    fontWeight: "600",
-  },
-  navLabelDisabled: {
-    color: Colors.light.textSecondary,
-  },
-  navLabelPrimary: {
-    color: "#FFFFFF",
-  },
-  autoToggle: {
-    flexDirection: "row",
+  btnDarkText: { fontSize: 13, fontWeight: "700", color: "#FFFFFF" },
+  btnGhost: {
+    flex: 1,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-    backgroundColor: Colors.light.background,
-    borderWidth: 1,
-    borderColor: Colors.light.border,
-    alignSelf: "center",
   },
-  autoToggleActive: {
-    backgroundColor: Colors.light.backgroundSecondary,
-    borderColor: Colors.light.tint,
+  btnGhostText: { fontSize: 13, fontWeight: "700", color: "#374151" },
+  footer: { alignItems: "flex-end" },
+  nextBtn: {
+    minWidth: 150,
+    height: 44,
+    borderRadius: 999,
+    backgroundColor: "#111827",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
-  autoLabel: {
-    ...Typography.caption,
-    color: Colors.light.textSecondary,
-  },
-  autoLabelActive: {
-    color: Colors.light.tint,
-    fontWeight: "500",
-  },
+  nextBtnText: { fontSize: 14, fontWeight: "700", color: "#FFFFFF" },
 });

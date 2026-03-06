@@ -25,6 +25,9 @@ const SUBJECT_CHIPS = [
 
 type SubjectId = (typeof SUBJECT_CHIPS)[number]["id"];
 
+const generateSessionId = () =>
+  `${Date.now().toString(36)}-${Math.random().toString(16).slice(2)}`;
+
 export default function NewLessonScreen() {
   const [selectedSubject, setSelectedSubject] = useState<SubjectId>("science");
   const [text, setText] = useState("");
@@ -38,6 +41,8 @@ export default function NewLessonScreen() {
 
   const handleGenerate = async () => {
     if (text.length === 0) return;
+
+    const sessionId = generateSessionId();
 
     setIsLoading(true);
     try {
@@ -55,10 +60,15 @@ export default function NewLessonScreen() {
         content: text,
       });
 
-      // Navigate to processing screen with lesson_id
+      // Navigate to processing screen with lesson_id and raw text so it can
+      // call the transmutation endpoint based on the current cognitive state.
       router.push({
         pathname: "/lessons/processing",
-        params: { lesson_id: lesson.id },
+        params: {
+          lesson_id: lesson.id,
+          raw_text: text,
+          session_id: sessionId,
+        },
       });
     } catch (error: any) {
       Alert.alert(

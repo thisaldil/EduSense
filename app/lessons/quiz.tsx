@@ -21,6 +21,8 @@ import {
   Question,
   CognitiveLoadFeatures,
 } from "@/services/lessons";
+import { neuroApi } from "@/services/api";
+import { useNeuroState } from "@/context/NeuroStateContext";
 
 type Mode = "idle" | "correct" | "incorrect";
 
@@ -70,6 +72,8 @@ export default function QuizScreen() {
   const [totalErrors, setTotalErrors] = useState<number>(0);
   const [idleGapsOverThreshold, setIdleGapsOverThreshold] = useState<number>(0);
   const IDLE_THRESHOLD_MS = 30000; // 30 seconds
+
+  const { updateStateFromPrediction } = useNeuroState();
 
   useEffect(() => {
     const fetchQuiz = async () => {
@@ -377,6 +381,24 @@ export default function QuizScreen() {
           })),
           cognitive_load_features: cognitiveLoadFeatures,
         });
+
+        // Send a lightweight summary to the neuro-adaptive model to update global state
+        try {
+          const predictBody: neuroApi.PredictRequest = {
+            total_time_seconds: cognitiveLoadFeatures.completionTime / 1000,
+            total_questions: allAnswers.length,
+            question_interactions: [],
+            back_navigations: 0,
+            forward_navigations: 0,
+            answer_changes: cognitiveLoadFeatures.answerChanges,
+            correct_answers: cognitiveLoadFeatures.totalScore,
+            incorrect_answers: allAnswers.length - cognitiveLoadFeatures.totalScore,
+          };
+          const prediction = await neuroApi.predict(predictBody);
+          updateStateFromPrediction(prediction);
+        } catch {
+          // If prediction fails, keep quiz flow unaffected
+        }
 
         router.push({
           pathname: "/lessons/quiz-loading",
