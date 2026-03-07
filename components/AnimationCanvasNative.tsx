@@ -140,6 +140,23 @@ export function AnimationCanvasNative({ isPlaying, script }: Props) {
       LOGICAL_WIDTH,
       LOGICAL_HEIGHT,
       scriptRef.current,
+      "",
+      {
+        // On native we must explicitly flush the 2D context and
+        // end the GL frame so that drawings become visible.
+        postFrame: () => {
+          try {
+            (ctx as any).flush?.();
+          } catch {
+            /* ignore flush errors */
+          }
+          try {
+            gl.endFrameEXP?.();
+          } catch {
+            /* ignore GL frame errors */
+          }
+        },
+      },
     );
     engineRef.current = engine;
 

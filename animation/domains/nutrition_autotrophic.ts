@@ -26,6 +26,7 @@ export const keywords = [
   "green plants",
   "chlorophyll",
   "nutrition in plants",
+  "energy",
 ];
 
 export function drawBackground(ctx: Ctx, W: number, H: number): void {

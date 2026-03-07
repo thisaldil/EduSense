@@ -3,7 +3,6 @@ import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -137,43 +136,6 @@ export default function QuizResultScreen() {
 
   const subLabel = "Newton's First Law";
 
-  const handleReview = () => {
-    if (params.quiz_id) {
-      router.push({
-        pathname: "/lessons/quiz-review",
-        params: {
-          quiz_id: params.quiz_id,
-          lesson_id: params.lesson_id,
-        },
-      });
-    } else {
-      Alert.alert("Error", "Quiz ID is missing.");
-    }
-  };
-
-  const handleReplay = () => {
-    Alert.alert(
-      "Replay lesson?",
-      "If you continue, this lesson will start again from the beginning.",
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Replay",
-          style: "default",
-          onPress: () => {
-            router.replace({
-              pathname: "/lessons/lesson-player",
-              params: { lesson_id: params.lesson_id },
-            });
-          },
-        },
-      ],
-    );
-  };
-
   const handleContinue = () => {
     router.push({
       pathname: "/lessons/concept-playground",
@@ -190,15 +152,7 @@ export default function QuizResultScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.appBar}>
-            <Pressable
-              style={styles.iconCircle}
-              onPress={() => router.back()}
-              hitSlop={10}
-            >
-              <Ionicons name="close" size={20} color={Colors.light.text} />
-            </Pressable>
             <Text style={styles.headerTitle}>Quiz completed</Text>
-            <View style={styles.iconCircle} />
           </View>
         </View>
 
@@ -347,83 +301,16 @@ export default function QuizResultScreen() {
                 </View>
               </View>
 
-              {/* Suggested actions */}
+              {/* Follow-up actions */}
               <View style={styles.actionsCard}>
-                <Text style={styles.sectionTitle}>
-                  What would you like to do?
-                </Text>
                 <Pressable
-                  style={[
-                    styles.actionRow,
-                    level === "medium" && styles.actionRowPrimary,
-                  ]}
-                  onPress={handleReview}
-                >
-                  <View style={styles.actionIconCircle}>
-                    <Ionicons
-                      name="refresh-circle"
-                      size={22}
-                      color={Colors.deepBlue}
-                    />
-                  </View>
-                  <View style={styles.actionTextBlock}>
-                    <Text style={styles.actionTitle}>Review weak concepts</Text>
-                    <Text style={styles.actionBody}>
-                      Revisit explanations for topics that need more practice.
-                    </Text>
-                  </View>
-                  <Ionicons
-                    name="chevron-forward"
-                    size={18}
-                    color={Colors.light.textSecondary}
-                  />
-                </Pressable>
-
-                <Pressable
-                  style={[
-                    styles.actionRow,
-                    level === "low" && styles.actionRowPrimary,
-                  ]}
-                  onPress={handleReplay}
-                >
-                  <View style={styles.actionIconCircle}>
-                    <Ionicons
-                      name="play-circle"
-                      size={22}
-                      color={Colors.deepBlue}
-                    />
-                  </View>
-                  <View style={styles.actionTextBlock}>
-                    <Text style={styles.actionTitle}>Replay experience</Text>
-                    <Text style={styles.actionBody}>
-                      Walk through the interactive lesson again from the start.
-                    </Text>
-                  </View>
-                  <Ionicons
-                    name="chevron-forward"
-                    size={18}
-                    color={Colors.light.textSecondary}
-                  />
-                </Pressable>
-
-                <Pressable
-                  style={[
-                    styles.actionRow,
-                    level === "high" && styles.actionRowPrimary,
-                  ]}
+                  style={[styles.actionRow, styles.actionRowPrimary]}
                   onPress={handleContinue}
                 >
-                  <View style={styles.actionIconCircle}>
-                    <Ionicons
-                      name="arrow-forward-circle"
-                      size={22}
-                      color={Colors.deepBlue}
-                    />
-                  </View>
                   <View style={styles.actionTextBlock}>
-                    <Text style={styles.actionTitle}>Continue learning</Text>
+                    <Text style={styles.actionTitle}>Do some activities</Text>
                     <Text style={styles.actionBody}>
-                      Move on to the next lesson in your learning path.
+                      Practice this concept with quick interactive activities.
                     </Text>
                   </View>
                   <Ionicons

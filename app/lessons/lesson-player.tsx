@@ -10,13 +10,20 @@ import {
   FlatList,
   Dimensions,
 } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { AnimationCanvasNative } from "@/components/AnimationCanvasNative";
 import { animationApi } from "@/services/api";
-import { getLatestTransmutedContent } from "@/services/lessons";
+import {
+  generateQuiz,
+  getLatestTransmutedContent,
+} from "@/services/lessons";
 import { useNeuroState } from "@/context/NeuroStateContext";
 import { useAnalyticsLogger } from "@/context/AnalyticsLoggerContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSensory } from "@/hooks/useSensory";
+import { BiometricBanner } from "@/components/sensory/BiometricBanner";
+import { SensoryToggle } from "@/components/sensory/SensoryToggle";
+import { SensoryDebugOverlay } from "@/components/sensory/SensoryDebugOverlay";
 
 type AnimationScript = animationApi.NeuroAdaptiveAnimationScript;
 type Scene = AnimationScript["scenes"][0];
@@ -387,12 +394,18 @@ function useNeuroAdaptiveScript({
 // LessonAnimationPanel
 // ─────────────────────────────────────────────────────────────────────────────
 export function LessonAnimationPanel({
+  lessonId,
+  studentId,
+  sessionId,
   script,
   loading,
   error,
   onRetry,
   cognitiveState = "OVERLOAD",
 }: {
+  lessonId?: string;
+  studentId?: string;
+  sessionId?: string | null;
   script: AnimationScript | null;
   loading?: boolean;
   error?: string | null;
@@ -411,6 +424,19 @@ export function LessonAnimationPanel({
     setCurrentTime(0);
     setActiveSceneIdx(0);
   }, [script]);
+
+  // Member 3 – Sensory overlay (haptics + audio) driven by the same clock
+  useSensory({
+    lessonId: lessonId ?? "",
+    studentId,
+    sessionId: sessionId ?? undefined,
+    script,
+    cognitiveState,
+    animationClock: {
+      currentTimeMs: currentTime,
+      isPlaying,
+    },
+  });
 
   // Ticker
   useEffect(() => {
@@ -480,22 +506,7 @@ export function LessonAnimationPanel({
       {/* ── Header row ── */}
       {script && (
         <View style={panelSt.headerRow}>
-          <View
-            style={[
-              panelSt.stateBadge,
-              {
-                backgroundColor: stateConf.bg,
-                borderColor: stateConf.color + "55",
-              },
-            ]}
-          >
-            <View
-              style={[panelSt.stateDot, { backgroundColor: stateConf.color }]}
-            />
-            <Text style={[panelSt.stateLabel, { color: stateConf.color }]}>
-              {cognitiveState}
-            </Text>
-          </View>
+          <BiometricBanner />
           <Text style={panelSt.titleText} numberOfLines={1}>
             {script.title || "Animation"}
           </Text>
@@ -543,7 +554,11 @@ export function LessonAnimationPanel({
         )}
 
         {script && !error && (
-          <AnimationCanvasNative isPlaying={isPlaying} script={script} />
+          <>
+            <AnimationCanvasNative isPlaying={isPlaying} script={script} />
+            {/* Dev-only overlay for Member 3 cues */}
+            <SensoryDebugOverlay />
+          </>
         )}
 
         {/* Scene label overlay */}
@@ -598,6 +613,7 @@ export function LessonAnimationPanel({
           >
             <Text style={panelSt.btnText}>↺ Reset</Text>
           </Pressable>
+          <SensoryToggle />
           <View style={panelSt.speedBox}>
             <Text style={panelSt.speedBoxLabel}>SPEED</Text>
             <Text style={panelSt.speedBoxVal}>{speedLabel}</Text>
@@ -897,16 +913,28 @@ export default function LessonPlayerScreen() {
     });
   };
 
-  const handleNextSection = async () => {
+  const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
+
+  const handleTestYourself = async () => {
+    if (!params.lesson_id) return;
+    setIsGeneratingQuiz(true);
     try {
       logInteraction("SECTION_END", {
         screen: "lesson-player",
-        reason: "next_section",
+        reason: "test_yourself",
       });
-      const prediction = await triggerPrediction();
-      if (prediction) updateStateFromPrediction(prediction);
+      const quiz = await generateQuiz({ lesson_id: params.lesson_id });
+      router.push({
+        pathname: "/lessons/quiz",
+        params: {
+          quiz_id: quiz.id,
+          lesson_id: params.lesson_id,
+        },
+      });
     } catch {
-      /* keep current */
+      /* TODO: show error to user */
+    } finally {
+      setIsGeneratingQuiz(false);
     }
   };
 
@@ -975,6 +1003,9 @@ export default function LessonPlayerScreen() {
 
         {/* Animation panel */}
         <LessonAnimationPanel
+          lessonId={params.lesson_id}
+          studentId={user?.id}
+          sessionId={undefined}
           script={script}
           loading={loading}
           error={error}
@@ -982,10 +1013,18 @@ export default function LessonPlayerScreen() {
           cognitiveState={neuroState.currentState}
         />
 
-        {/* Next section */}
+        {/* Test yourself */}
         <View style={screenSt.footer}>
-          <Pressable style={screenSt.nextBtn} onPress={handleNextSection}>
-            <Text style={screenSt.nextBtnText}>Next section →</Text>
+          <Pressable
+            style={[screenSt.nextBtn, isGeneratingQuiz && screenSt.nextBtnDisabled]}
+            onPress={handleTestYourself}
+            disabled={!params.lesson_id || isGeneratingQuiz}
+          >
+            {isGeneratingQuiz ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={screenSt.nextBtnText}>Test yourself</Text>
+            )}
           </Pressable>
         </View>
       </ScrollView>
@@ -1070,4 +1109,5 @@ const screenSt = StyleSheet.create({
     elevation: 3,
   },
   nextBtnText: { fontSize: 14, fontWeight: "700", color: "#FFFFFF" },
+  nextBtnDisabled: { opacity: 0.7 },
 });

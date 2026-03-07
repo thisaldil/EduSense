@@ -36,10 +36,9 @@ const getApiBaseUrl = (): string => {
       // - Physical device: Use your computer's local IP address
       // Change this to your local IP if testing on a physical device
       // Find your IP: ifconfig | grep "inet " | grep -v 127.0.0.1
-      return "http://10.55.58.68:8000"; // Update this to your local IP for physical devices
+      return "http://192.168.1.166:8000"; // Update this to your local IP for physical devices
       // return "http://10.0.2.2:8000"; // Use this for Android Emulator
     }
-
     // Default for web or unknown platforms
     return "http://127.0.0.1:8000";
   }
@@ -65,4 +64,5 @@ export const API_ENDPOINTS = {
   UPLOADS: "/api/uploads",
   ACTIVITIES: "/api/activities",
   ANIMATION_NEURO_ADAPTIVE: "/api/animation/neuro-adaptive",
+  SENSORY_OVERLAY: "/api/sensory/overlay",
 } as const;

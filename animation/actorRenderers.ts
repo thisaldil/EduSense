@@ -185,6 +185,15 @@ export const ACTOR_RENDERERS: Record<string, DrawFn> = {
       t,
       alpha,
     ),
+  star: (ctx, actor, alpha, t, _W, _H) =>
+    drawSol(
+      ctx,
+      actor.x ?? 400,
+      actor.y ?? 300,
+      actor.size ?? 52,
+      t,
+      alpha,
+    ),
   label: (ctx, actor, alpha, t, W, H) =>
     drawLabelByText(ctx, actor, alpha, t, W, H),
 };

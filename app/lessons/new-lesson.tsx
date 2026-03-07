@@ -19,6 +19,39 @@ import { createLesson } from "@/services/lessons";
 const generateSessionId = () =>
   `${Date.now().toString(36)}-${Math.random().toString(16).slice(2)}`;
 
+function inferLessonMetaFromText(content: string): { title: string; subject: string } {
+  const trimmed = content.trim();
+  if (!trimmed) {
+    return { title: "Lesson", subject: "General" };
+  }
+
+  const firstLine = trimmed.split(/\r?\n/)[0] ?? trimmed;
+  const sentence = firstLine.split(/[.!?]/)[0] || firstLine;
+  const match =
+    sentence.match(/^(.{0,80}?)(?:\s+is\b|\s+are\b|[:\-—])/i) ??
+    sentence.match(/^(.{0,80}?)\b(using|about|for)\b/i);
+
+  let raw = (match && match[1]) || sentence;
+  raw = raw.replace(/["“”]/g, "").trim();
+
+  if (!raw || raw.length < 3) {
+    return { title: "Lesson", subject: "General" };
+  }
+
+  const words = raw.split(/\s+/).slice(0, 6);
+  const phrase = words.join(" ");
+  const toTitleCase = (s: string) =>
+    s
+      .toLowerCase()
+      .split(" ")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+
+  const subject = toTitleCase(phrase);
+  const title = subject;
+  return { title, subject };
+}
+
 export default function NewLessonScreen() {
   const [text, setText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -36,9 +69,10 @@ export default function NewLessonScreen() {
 
     setIsLoading(true);
     try {
+      const { title, subject } = inferLessonMetaFromText(text);
       const lesson = await createLesson({
-        title: "Lesson",
-        subject: "General",
+        title,
+        subject,
         content: text,
       });
 
@@ -180,7 +214,7 @@ Example: 'Photosynthesis is how plants make their food using sunlight, water, an
           style={({ pressed }) => [
             styles.generateButton,
             { transform: [{ scale: pressed ? 0.98 : 1 }] },
-            (text.length === 0 || isLoading) && styles.generateButtonDisabled,
+          (text.length === 0 || isLoading) && styles.generateButtonDisabled,
           ]}
           onPress={handleGenerate}
           disabled={text.length === 0 || isLoading}
