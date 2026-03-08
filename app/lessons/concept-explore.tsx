@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import {
+  Animated,
   Platform,
   Pressable,
   SafeAreaView,
@@ -9,9 +10,12 @@ import {
   StyleSheet,
   Text,
   View,
+  Dimensions,
 } from "react-native";
 
 import { Colors, Typography } from "@/constants/theme";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type CognitiveState = "OVERLOAD" | "OPTIMAL" | "LOW_LOAD";
@@ -26,139 +30,714 @@ type TransmuteResult = {
   cognitive_state?: CognitiveState;
 };
 
-// ─── Helper: tier color ───────────────────────────────────────────────────────
-function tierColor(tier?: string): string {
-  if (!tier) return Colors.deepBlue;
-  if (tier.includes("Tier 3")) return "#EF4444";
-  if (tier.includes("Tier 1")) return "#F59E0B";
-  return "#22C55E";
+// ─── Student Profile derived from cognitive state + tier ─────────────────────
+type StudentProfile = {
+  type: "struggling" | "focused" | "explorer";
+  theme: StudentTheme;
+};
+
+type StudentTheme = {
+  // backgrounds
+  pageBg: string;
+  cardBg: string;
+  headerBg: string;
+  accentBg: string;
+  // text
+  headingColor: string;
+  bodyColor: string;
+  mutedColor: string;
+  accentColor: string;
+  // decorative
+  badgeBg: string;
+  badgeText: string;
+  pillBg: string;
+  pillBorder: string;
+  ctaBg: string;
+  ctaShadow: string;
+  tierBorderColor: string;
+  // emoji / mascot
+  mascot: string;
+  mascotBg: string;
+  greeting: string;
+  modeName: string;
+  modeSubtitle: string;
+  // keyword chip
+  kwBg: string;
+  kwBorder: string;
+  kwText: string;
+};
+
+// ─── Theme Definitions per Student Type ──────────────────────────────────────
+
+const THEMES: Record<"struggling" | "focused" | "explorer", StudentTheme> = {
+  // OVERLOAD student — calm, dark, minimal, soothing
+  struggling: {
+    pageBg: "#0D1B2A",
+    cardBg: "#1B2A3B",
+    headerBg: "#0D1B2A",
+    accentBg: "#112233",
+    headingColor: "#E8F4FD",
+    bodyColor: "#C8DCF0",
+    mutedColor: "#6A8FAA",
+    accentColor: "#38BDF8",
+    badgeBg: "#0E3A52",
+    badgeText: "#38BDF8",
+    pillBg: "#112233",
+    pillBorder: "#1E3A50",
+    ctaBg: "#0C4A6E",
+    ctaShadow: "#38BDF8",
+    tierBorderColor: "#EF4444",
+    mascot: "🌙",
+    mascotBg: "#0E3A52",
+    greeting: "Take it easy. One step at a time.",
+    modeName: "Calm Mode",
+    modeSubtitle: "Simplified just for you",
+    kwBg: "#0E3A5240",
+    kwBorder: "#38BDF840",
+    kwText: "#38BDF8",
+  },
+  // OPTIMAL student — clean, bright, confident, structured
+  focused: {
+    pageBg: "#F0F4FF",
+    cardBg: "#FFFFFF",
+    headerBg: "#FFFFFF",
+    accentBg: "#EEF2FF",
+    headingColor: "#1E1B4B",
+    bodyColor: "#312E81",
+    mutedColor: "#7C86A1",
+    accentColor: "#4F46E5",
+    badgeBg: "#EEF2FF",
+    badgeText: "#4F46E5",
+    pillBg: "#F8FAFF",
+    pillBorder: "#C7D2FE",
+    ctaBg: "#4F46E5",
+    ctaShadow: "#4F46E5",
+    tierBorderColor: "#22C55E",
+    mascot: "🔬",
+    mascotBg: "#EEF2FF",
+    greeting: "You're in the zone. Let's learn!",
+    modeName: "Focus Mode",
+    modeSubtitle: "Optimized for your flow",
+    kwBg: "#EEF2FF",
+    kwBorder: "#C7D2FE",
+    kwText: "#4F46E5",
+  },
+  // LOW_LOAD student — vibrant, playful, adventurous, energetic
+  explorer: {
+    pageBg: "#FFFBEB",
+    cardBg: "#FFFFFF",
+    headerBg: "#FFFFFF",
+    accentBg: "#FEF3C7",
+    headingColor: "#1C1917",
+    bodyColor: "#292524",
+    mutedColor: "#A8A29E",
+    accentColor: "#F59E0B",
+    badgeBg: "#FEF3C7",
+    badgeText: "#D97706",
+    pillBg: "#FFFBEB",
+    pillBorder: "#FDE68A",
+    ctaBg: "#F59E0B",
+    ctaShadow: "#F59E0B",
+    tierBorderColor: "#F59E0B",
+    mascot: "🧭",
+    mascotBg: "#FEF3C7",
+    greeting: "Ready to explore? Let's go deeper!",
+    modeName: "Adventure Mode",
+    modeSubtitle: "Enriched for curious minds",
+    kwBg: "#FEF3C740",
+    kwBorder: "#FDE68A",
+    kwText: "#D97706",
+  },
+};
+
+// ─── Derive student profile ───────────────────────────────────────────────────
+function deriveProfile(
+  cognitiveState: CognitiveState,
+  tier?: string
+): StudentProfile {
+  if (cognitiveState === "OVERLOAD") {
+    return { type: "struggling", theme: THEMES.struggling };
+  }
+  if (cognitiveState === "LOW_LOAD") {
+    return { type: "explorer", theme: THEMES.explorer };
+  }
+  // OPTIMAL (or Tier 2 fallback)
+  return { type: "focused", theme: THEMES.focused };
 }
+
+// ─── Animated Fade-in wrapper ─────────────────────────────────────────────────
+function FadeIn({
+  children,
+  delay = 0,
+  style,
+}: {
+  children: React.ReactNode;
+  delay?: number;
+  style?: any;
+}) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(18)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 500,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 500,
+        delay,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
+  return (
+    <Animated.View style={[{ opacity, transform: [{ translateY }] }, style]}>
+      {children}
+    </Animated.View>
+  );
+}
+
+// ─── Pulse animation for mascot ──────────────────────────────────────────────
+function PulsingMascot({
+  emoji,
+  bg,
+  profile,
+}: {
+  emoji: string;
+  bg: string;
+  profile: StudentProfile;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scale, {
+          toValue: profile.type === "explorer" ? 1.15 : profile.type === "focused" ? 1.06 : 1.03,
+          duration: profile.type === "explorer" ? 700 : 1200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scale, {
+          toValue: 1,
+          duration: profile.type === "explorer" ? 700 : 1200,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, []);
+
+  return (
+    <Animated.View
+      style={[
+        mascotStyles.circle,
+        { backgroundColor: bg, transform: [{ scale }] },
+      ]}
+    >
+      <Text style={mascotStyles.emoji}>{emoji}</Text>
+    </Animated.View>
+  );
+}
+
+const mascotStyles = StyleSheet.create({
+  circle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emoji: { fontSize: 28 },
+});
 
 // ─── Metric Pill ─────────────────────────────────────────────────────────────
 function MetricPill({
   label,
   value,
-  color,
+  theme,
 }: {
   label: string;
   value: string;
-  color: string;
+  theme: StudentTheme;
 }) {
   return (
-    <View style={metricStyles.pill}>
-      <Text style={metricStyles.label}>{label}</Text>
-      <Text style={[metricStyles.value, { color }]}>{value}</Text>
+    <View
+      style={[
+        metricStyles.pill,
+        { backgroundColor: theme.pillBg, borderColor: theme.pillBorder },
+      ]}
+    >
+      <Text style={[metricStyles.label, { color: theme.mutedColor }]}>
+        {label}
+      </Text>
+      <Text style={[metricStyles.value, { color: theme.accentColor }]}>
+        {value}
+      </Text>
     </View>
   );
 }
+
 const metricStyles = StyleSheet.create({
   pill: {
     flex: 1,
     alignItems: "center",
-    backgroundColor: "#F8FAFC",
-    borderRadius: 10,
-    paddingVertical: 8,
+    borderRadius: 12,
+    paddingVertical: 10,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
   },
   label: {
     fontSize: 9,
     fontWeight: "800",
-    color: "#94A3B8",
     letterSpacing: 0.8,
     marginBottom: 3,
+    textTransform: "uppercase",
   },
-  value: { fontSize: 13, fontWeight: "700" },
+  value: { fontSize: 13, fontWeight: "800" },
 });
 
-// ─── Cognitive State Layouts ────────────────────────────────────────────────────
-type LayoutFactoryProps = {
+// ─── OVERLOAD Layout: Calm Step-by-Step Cards ────────────────────────────────
+function CalmStepCards({
+  text,
+  theme,
+}: {
+  text: string;
+  theme: StudentTheme;
+}) {
+  const lines = text
+    .split(/\n+/)
+    .map((l) => l.replace(/^[\*\-•]\s*/, "").trim())
+    .filter(Boolean);
+
+  return (
+    <View>
+      {/* Mascot header */}
+      <View style={calmStyles.header}>
+        <PulsingMascot emoji={theme.mascot} bg={theme.mascotBg} profile={{ type: "struggling", theme }} />
+        <View style={{ flex: 1 }}>
+          <Text style={[calmStyles.modeName, { color: theme.headingColor }]}>
+            {theme.modeName}
+          </Text>
+          <Text style={[calmStyles.greeting, { color: theme.mutedColor }]}>
+            {theme.greeting}
+          </Text>
+        </View>
+      </View>
+
+      {/* One big idea per card */}
+      {lines.map((line, i) => (
+        <FadeIn key={i} delay={i * 120}>
+          <View
+            style={[
+              calmStyles.stepCard,
+              { backgroundColor: theme.accentBg, borderColor: theme.pillBorder },
+            ]}
+          >
+            <View
+              style={[calmStyles.stepNum, { backgroundColor: theme.accentColor }]}
+            >
+              <Text style={calmStyles.stepNumText}>{i + 1}</Text>
+            </View>
+            <Text style={[calmStyles.stepText, { color: theme.bodyColor }]}>
+              {line}
+            </Text>
+          </View>
+        </FadeIn>
+      ))}
+
+      {lines.length === 0 && (
+        <Text style={[calmStyles.stepText, { color: theme.bodyColor }]}>
+          {text}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+const calmStyles = StyleSheet.create({
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 20,
+  },
+  modeName: {
+    fontSize: 17,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
+  greeting: {
+    fontSize: 12,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  stepCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 10,
+    borderWidth: 1,
+    gap: 12,
+  },
+  stepNum: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    marginTop: 2,
+  },
+  stepNumText: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#fff",
+  },
+  stepText: {
+    flex: 1,
+    fontSize: 19,
+    lineHeight: 28,
+    fontWeight: "600",
+  },
+});
+
+// ─── OPTIMAL Layout: Structured Dual-Panel ───────────────────────────────────
+function StructuredLessonPanel({
+  text,
+  keywords,
+  theme,
+}: {
+  text: string;
+  keywords?: string[];
+  theme: StudentTheme;
+}) {
+  return (
+    <View>
+      {/* Mode badge */}
+      <View style={structStyles.modeBadge}>
+        <Text style={structStyles.modeEmoji}>{theme.mascot}</Text>
+        <View>
+          <Text style={[structStyles.modeName, { color: theme.headingColor }]}>
+            {theme.modeName}
+          </Text>
+          <Text style={[structStyles.modeSubtitle, { color: theme.mutedColor }]}>
+            {theme.greeting}
+          </Text>
+        </View>
+      </View>
+
+      {/* Divider */}
+      <View
+        style={[structStyles.divider, { backgroundColor: theme.pillBorder }]}
+      />
+
+      {/* Main prose */}
+      <FadeIn delay={80}>
+        <Text
+          style={[structStyles.sectionHeading, { color: theme.accentColor }]}
+        >
+          📖 Lesson Explanation
+        </Text>
+        <Text style={[structStyles.proseText, { color: theme.bodyColor }]}>
+          {text}
+        </Text>
+      </FadeIn>
+
+      {/* Vocab sidebar as horizontal chips */}
+      {keywords && keywords.length > 0 && (
+        <FadeIn delay={200}>
+          <View
+            style={[
+              structStyles.vocabBox,
+              { backgroundColor: theme.accentBg, borderColor: theme.pillBorder },
+            ]}
+          >
+            <Text
+              style={[structStyles.vocabLabel, { color: theme.accentColor }]}
+            >
+              🔑 Key Vocabulary
+            </Text>
+            <View style={structStyles.chipsRow}>
+              {keywords.map((kw) => (
+                <View
+                  key={kw}
+                  style={[
+                    structStyles.chip,
+                    {
+                      backgroundColor: theme.cardBg,
+                      borderColor: theme.pillBorder,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[structStyles.chipText, { color: theme.bodyColor }]}
+                  >
+                    {kw}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        </FadeIn>
+      )}
+    </View>
+  );
+}
+
+const structStyles = StyleSheet.create({
+  modeBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 14,
+  },
+  modeEmoji: { fontSize: 30 },
+  modeName: { fontSize: 17, fontWeight: "800" },
+  modeSubtitle: { fontSize: 12, marginTop: 1 },
+  divider: { height: 1, marginBottom: 16 },
+  sectionHeading: {
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: 0.4,
+    marginBottom: 10,
+    textTransform: "uppercase",
+  },
+  proseText: {
+    fontSize: 15,
+    lineHeight: 25,
+    fontWeight: "500",
+    marginBottom: 16,
+  },
+  vocabBox: {
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+  },
+  vocabLabel: {
+    fontSize: 12,
+    fontWeight: "800",
+    marginBottom: 10,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  chipText: { fontSize: 12, fontWeight: "700" },
+});
+
+// ─── LOW_LOAD Layout: Adventure Story Cards ───────────────────────────────────
+function AdventureStoryView({
+  text,
+  theme,
+}: {
+  text: string;
+  theme: StudentTheme;
+}) {
+  // Split into paragraphs or sentences for dramatic reveal
+  const parts = text
+    .split(/\n+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  const paragraphs = parts.length > 1 ? parts : text.match(/[^.!?]+[.!?]+/g)?.map((s) => s.trim()).filter(Boolean) || [text];
+
+  return (
+    <View>
+      {/* Adventure header */}
+      <View style={adventureStyles.header}>
+        <PulsingMascot emoji={theme.mascot} bg={theme.mascotBg} profile={{ type: "explorer", theme }} />
+        <View style={{ flex: 1 }}>
+          <Text
+            style={[adventureStyles.title, { color: theme.headingColor }]}
+          >
+            {theme.modeName}
+          </Text>
+          <Text
+            style={[adventureStyles.subtitle, { color: theme.mutedColor }]}
+          >
+            {theme.greeting}
+          </Text>
+        </View>
+        {/* Energy badge */}
+        <View
+          style={[
+            adventureStyles.energyBadge,
+            { backgroundColor: theme.badgeBg },
+          ]}
+        >
+          <Text
+            style={[adventureStyles.energyText, { color: theme.badgeText }]}
+          >
+            ⚡ ENRICHED
+          </Text>
+        </View>
+      </View>
+
+      {/* Story panels */}
+      {paragraphs.map((para, i) => (
+        <FadeIn key={i} delay={i * 100}>
+          <View
+            style={[
+              adventureStyles.storyPanel,
+              {
+                backgroundColor: i % 2 === 0 ? theme.cardBg : theme.accentBg,
+                borderLeftColor: theme.accentColor,
+                borderColor: theme.pillBorder,
+              },
+            ]}
+          >
+            <Text
+              style={[adventureStyles.panelText, { color: theme.bodyColor }]}
+            >
+              {para}
+            </Text>
+          </View>
+        </FadeIn>
+      ))}
+    </View>
+  );
+}
+
+const adventureStyles = StyleSheet.create({
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 18,
+    flexWrap: "wrap",
+  },
+  title: { fontSize: 18, fontWeight: "900" },
+  subtitle: { fontSize: 12, marginTop: 2 },
+  energyBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  energyText: { fontSize: 10, fontWeight: "900", letterSpacing: 0.6 },
+  storyPanel: {
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+    borderLeftWidth: 4,
+    borderWidth: 1,
+  },
+  panelText: { fontSize: 15, lineHeight: 24, fontWeight: "500" },
+});
+
+// ─── Layout Factory ───────────────────────────────────────────────────────────
+function LayoutFactory({
+  cognitiveState,
+  text,
+  keywords,
+  theme,
+  profile,
+}: {
   cognitiveState?: CognitiveState;
   text?: string;
   keywords?: string[];
-};
-
-function LayoutFactory({ cognitiveState, text, keywords }: LayoutFactoryProps) {
+  theme: StudentTheme;
+  profile: StudentProfile;
+}) {
   const safeText =
     text ||
     "No transmuted text found. Try generating the lesson again once the Neuro-Engine has processed your lesson.";
 
   switch (cognitiveState) {
     case "OVERLOAD":
-      return <SimpleListView text={safeText} />;
+      return <CalmStepCards text={safeText} theme={theme} />;
     case "LOW_LOAD":
-      return <StoryModeView text={safeText} />;
+      return <AdventureStoryView text={safeText} theme={theme} />;
     case "OPTIMAL":
     default:
-      return <StandardProseView text={safeText} keywords={keywords} />;
+      return (
+        <StructuredLessonPanel
+          text={safeText}
+          keywords={keywords}
+          theme={theme}
+        />
+      );
   }
 }
 
-function SimpleListView({ text }: { text: string }) {
-  const chunks = text.split(/\n{2,}/).filter((c) => c.trim().length > 0);
-
+// ─── Tier Banner ─────────────────────────────────────────────────────────────
+function TierBanner({
+  tier,
+  theme,
+}: {
+  tier: string;
+  theme: StudentTheme;
+}) {
+  const color = theme.tierBorderColor;
   return (
-    <View style={styles.simpleListCard}>
-      <View style={styles.simpleListHeader}>
-        <Ionicons name="school-outline" size={22} color="#111827" />
-        <Text style={styles.simpleListTitle}>Teacher View</Text>
-      </View>
-      {chunks.map((chunk, index) => (
-        <View key={index} style={styles.simpleListItem}>
-          <Text style={styles.simpleListBullet}>•</Text>
-          <Text style={styles.simpleListText}>{chunk.trim()}</Text>
-        </View>
-      ))}
-      {chunks.length === 0 && (
-        <Text style={styles.simpleListText}>{text.trim()}</Text>
-      )}
+    <View
+      style={[
+        tierBannerStyles.banner,
+        {
+          backgroundColor: theme.cardBg,
+          borderLeftColor: color,
+          shadowColor: color,
+        },
+      ]}
+    >
+      <View
+        style={[tierBannerStyles.dot, { backgroundColor: color }]}
+      />
+      <Text style={[tierBannerStyles.text, { color }]}>{tier}</Text>
     </View>
   );
 }
 
-function StandardProseView({
-  text,
-  keywords,
+const tierBannerStyles = StyleSheet.create({
+  banner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  text: { fontSize: 13, fontWeight: "700" },
+});
+
+// ─── Section Label ────────────────────────────────────────────────────────────
+function SectionLabel({
+  label,
+  color,
 }: {
-  text: string;
-  keywords?: string[];
+  label: string;
+  color: string;
 }) {
   return (
-    <View style={styles.standardProseContainer}>
-      <View style={styles.standardProseMain}>
-        <Text style={styles.standardProseHeading}>Lesson Explanation</Text>
-        <Text style={styles.standardProseText}>{text}</Text>
-      </View>
-      {keywords && keywords.length > 0 && (
-        <View style={styles.vocabSidebar}>
-          <Text style={styles.vocabSidebarLabel}>Vocabulary</Text>
-          {keywords.map((kw) => (
-            <View key={kw} style={styles.vocabChip}>
-              <Text style={styles.vocabChipText}>{kw}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-    </View>
+    <Text style={[sectionLabelStyles.text, { color }]}>{label}</Text>
   );
 }
 
-function StoryModeView({ text }: { text: string }) {
-  return (
-    <View style={styles.storyModeContainer}>
-      <View style={styles.storyHeader}>
-        <View style={styles.jaxAvatar}>
-          <Text style={styles.jaxAvatarText}>🧭</Text>
-        </View>
-        <View>
-          <Text style={styles.storyTitle}>Jax the Explorer</Text>
-          <Text style={styles.storySubtitle}>Adventure Mode</Text>
-        </View>
-      </View>
-      <Text style={styles.storyBody}>{text}</Text>
-    </View>
-  );
-}
+const sectionLabelStyles = StyleSheet.create({
+  text: {
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 1.2,
+    marginBottom: 8,
+    textTransform: "uppercase",
+  },
+});
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function ConceptExploreScreen() {
@@ -169,7 +748,6 @@ export default function ConceptExploreScreen() {
     cognitive_state?: CognitiveState;
   }>();
 
-  // FIX 1: Properly type the parsed transmute result
   const parsedTransmute = useMemo<TransmuteResult | null>(() => {
     if (!params.transmute) return null;
     try {
@@ -180,181 +758,301 @@ export default function ConceptExploreScreen() {
   }, [params.transmute]);
 
   const [showRaw, setShowRaw] = useState(false);
-  const color = tierColor(parsedTransmute?.tier_applied);
+
   const cognitiveState: CognitiveState =
     (params.cognitive_state as CognitiveState) ||
     (parsedTransmute?.cognitive_state as CognitiveState) ||
     "OPTIMAL";
 
+  const profile = deriveProfile(cognitiveState, parsedTransmute?.tier_applied);
+  const theme = profile.theme;
+
+  // Header entrance animation
+  const headerOpacity = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(headerOpacity, {
+      toValue: 1,
+      duration: 400,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView
+      style={[mainStyles.safeArea, { backgroundColor: theme.pageBg }]}
+    >
       {/* ── Header ── */}
-      <View style={styles.header}>
+      <Animated.View
+        style={[
+          mainStyles.header,
+          { backgroundColor: theme.headerBg, opacity: headerOpacity },
+        ]}
+      >
         <Pressable
-          style={styles.backButton}
+          style={[
+            mainStyles.backButton,
+            { backgroundColor: theme.accentBg },
+          ]}
           onPress={() => router.back()}
           hitSlop={10}
         >
-          <Ionicons name="chevron-back" size={20} color="#333" />
+          <Ionicons name="chevron-back" size={20} color={theme.accentColor} />
         </Pressable>
-        <View style={styles.headerCenter}>
-          <View style={styles.chapterBadge}>
-            <Text style={styles.chapterBadgeText}>⚡ Neuro-Engine Result</Text>
+
+        <View style={mainStyles.headerCenter}>
+          <View
+            style={[
+              mainStyles.chapterBadge,
+              { backgroundColor: theme.badgeBg },
+            ]}
+          >
+            <Text
+              style={[mainStyles.chapterBadgeText, { color: theme.badgeText }]}
+            >
+              ⚡ Neuro-Engine Result
+            </Text>
           </View>
-          <Text style={styles.headerTitle}>Transmuted Lesson</Text>
-          <Text style={styles.headerTagline}>Adapted to your brain state</Text>
+          <Text
+            style={[mainStyles.headerTitle, { color: theme.headingColor }]}
+          >
+            Transmuted Lesson
+          </Text>
+          <Text
+            style={[mainStyles.headerTagline, { color: theme.mutedColor }]}
+          >
+            {theme.modeSubtitle}
+          </Text>
         </View>
+
         <View style={{ width: 36 }} />
-      </View>
+      </Animated.View>
 
       <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        style={mainStyles.scroll}
+        contentContainerStyle={mainStyles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
         {/* ── Tier Banner ── */}
         {parsedTransmute?.tier_applied && (
-          <View style={[styles.tierBanner, { borderLeftColor: color }]}>
-            <View style={[styles.tierDot, { backgroundColor: color }]} />
-            <Text style={[styles.tierText, { color }]}>
-              {parsedTransmute.tier_applied}
-            </Text>
-          </View>
+          <FadeIn delay={50}>
+            <TierBanner tier={parsedTransmute.tier_applied} theme={theme} />
+          </FadeIn>
         )}
 
         {/* ── Transmuted Text (PRIMARY) ── */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>TRANSMUTED OUTPUT</Text>
-          <View style={[styles.transmuteCard, { borderColor: `${color}40` }]}>
-            <LayoutFactory
-              cognitiveState={cognitiveState}
-              text={parsedTransmute?.transmuted_text}
-              keywords={parsedTransmute?.keywords_preserved}
-            />
-          </View>
-        </View>
-
-        {/* ── NLP Metrics ── */}
-        {parsedTransmute && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>NLP ANALYSIS METRICS</Text>
-            <View style={styles.metricsRow}>
-              <MetricPill
-                label="F-K GRADE"
-                value={
-                  parsedTransmute.flesch_kincaid_grade != null
-                    ? `Grade ${parsedTransmute.flesch_kincaid_grade.toFixed(1)}`
-                    : "—"
-                }
-                color={color}
-              />
-              <MetricPill
-                label="COMPLEXITY"
-                value={
-                  parsedTransmute.original_complexity_score != null
-                    ? parsedTransmute.original_complexity_score.toFixed(2)
-                    : "—"
-                }
-                color={color}
-              />
-              <MetricPill
-                label="DEP. DISTANCE"
-                value={
-                  parsedTransmute.dependency_distance != null
-                    ? parsedTransmute.dependency_distance.toFixed(2)
-                    : "—"
-                }
-                color={color}
+        <FadeIn delay={100}>
+          <View style={mainStyles.section}>
+            <SectionLabel label="TRANSMUTED OUTPUT" color={theme.mutedColor} />
+            <View
+              style={[
+                mainStyles.transmuteCard,
+                {
+                  backgroundColor: theme.cardBg,
+                  borderColor: `${theme.accentColor}30`,
+                  shadowColor: theme.accentColor,
+                },
+              ]}
+            >
+              <LayoutFactory
+                cognitiveState={cognitiveState}
+                text={parsedTransmute?.transmuted_text}
+                keywords={parsedTransmute?.keywords_preserved}
+                theme={theme}
+                profile={profile}
               />
             </View>
           </View>
+        </FadeIn>
+
+        {/* ── NLP Metrics ── */}
+        {parsedTransmute && (
+          <FadeIn delay={200}>
+            <View style={mainStyles.section}>
+              <SectionLabel
+                label="NLP ANALYSIS METRICS"
+                color={theme.mutedColor}
+              />
+              <View style={mainStyles.metricsRow}>
+                <MetricPill
+                  label="F-K GRADE"
+                  value={
+                    parsedTransmute.flesch_kincaid_grade != null
+                      ? `Grade ${parsedTransmute.flesch_kincaid_grade.toFixed(1)}`
+                      : "—"
+                  }
+                  theme={theme}
+                />
+                <MetricPill
+                  label="COMPLEXITY"
+                  value={
+                    parsedTransmute.original_complexity_score != null
+                      ? parsedTransmute.original_complexity_score.toFixed(2)
+                      : "—"
+                  }
+                  theme={theme}
+                />
+                <MetricPill
+                  label="DEP. DISTANCE"
+                  value={
+                    parsedTransmute.dependency_distance != null
+                      ? parsedTransmute.dependency_distance.toFixed(2)
+                      : "—"
+                  }
+                  theme={theme}
+                />
+              </View>
+            </View>
+          </FadeIn>
         )}
 
         {/* ── Keywords Preserved ── */}
         {parsedTransmute?.keywords_preserved &&
           parsedTransmute.keywords_preserved.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionLabel}>KEYWORDS PRESERVED</Text>
-              <View style={styles.keywordsCard}>
-                <View style={styles.keywordsWrap}>
-                  {parsedTransmute.keywords_preserved.map((kw) => (
-                    <View
-                      key={kw}
-                      style={[
-                        styles.keywordChip,
-                        {
-                          backgroundColor: `${color}18`,
-                          borderColor: `${color}40`,
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.keywordText, { color }]}>{kw}</Text>
-                    </View>
-                  ))}
+            <FadeIn delay={280}>
+              <View style={mainStyles.section}>
+                <SectionLabel
+                  label="KEYWORDS PRESERVED"
+                  color={theme.mutedColor}
+                />
+                <View
+                  style={[
+                    mainStyles.keywordsCard,
+                    {
+                      backgroundColor: theme.cardBg,
+                      borderColor: theme.pillBorder,
+                    },
+                  ]}
+                >
+                  <View style={mainStyles.keywordsWrap}>
+                    {parsedTransmute.keywords_preserved.map((kw) => (
+                      <View
+                        key={kw}
+                        style={[
+                          mainStyles.keywordChip,
+                          {
+                            backgroundColor: theme.kwBg,
+                            borderColor: theme.kwBorder,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            mainStyles.keywordText,
+                            { color: theme.kwText },
+                          ]}
+                        >
+                          {kw}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                  <Text
+                    style={[
+                      mainStyles.keywordCount,
+                      { color: theme.mutedColor },
+                    ]}
+                  >
+                    {parsedTransmute.keywords_preserved.length} core terms
+                    preserved ✓
+                  </Text>
                 </View>
-                <Text style={styles.keywordCount}>
-                  {parsedTransmute.keywords_preserved.length} core terms
-                  preserved ✓
-                </Text>
               </View>
-            </View>
+            </FadeIn>
           )}
 
         {/* ── Raw Input Toggle ── */}
-        <View style={styles.section}>
-          <Pressable
-            style={styles.rawToggle}
-            onPress={() => setShowRaw((v) => !v)}
-          >
-            <Text style={styles.sectionLabel}>RAW INPUT TEXT</Text>
-            <Ionicons
-              name={showRaw ? "chevron-up" : "chevron-down"}
-              size={16}
-              color="#94A3B8"
-            />
-          </Pressable>
-          {showRaw && (
-            <View style={styles.rawCard}>
-              <Text style={styles.rawText}>
-                {params.raw_text || "No raw text available."}
-              </Text>
-            </View>
-          )}
-        </View>
+        <FadeIn delay={340}>
+          <View style={mainStyles.section}>
+            <Pressable
+              style={mainStyles.rawToggle}
+              onPress={() => setShowRaw((v) => !v)}
+            >
+              <SectionLabel label="RAW INPUT TEXT" color={theme.mutedColor} />
+              <Ionicons
+                name={showRaw ? "chevron-up" : "chevron-down"}
+                size={16}
+                color={theme.mutedColor}
+              />
+            </Pressable>
+            {showRaw && (
+              <View
+                style={[
+                  mainStyles.rawCard,
+                  {
+                    backgroundColor: theme.accentBg,
+                    borderColor: theme.pillBorder,
+                  },
+                ]}
+              >
+                <Text
+                  style={[mainStyles.rawText, { color: theme.mutedColor }]}
+                >
+                  {params.raw_text || "No raw text available."}
+                </Text>
+              </View>
+            )}
+          </View>
+        </FadeIn>
 
         {/* ── CTA ── */}
-        <Pressable
-          style={styles.demoCard}
-          onPress={() => {
-            if (params.lesson_id) {
-              router.push({
-                pathname: "/lessons/lesson-player",
-                params: { lesson_id: params.lesson_id },
-              });
-            }
-          }}
-        >
-          <View style={styles.demoLeft}>
-            <Text style={styles.demoEmoji}>🎮</Text>
-            <View>
-              <Text style={styles.demoTitle}>See it move!</Text>
-              <Text style={styles.demoSub}>Play a quick demo</Text>
+        <FadeIn delay={400}>
+          <Pressable
+            style={[
+              mainStyles.demoCard,
+              {
+                backgroundColor: theme.ctaBg,
+                shadowColor: theme.ctaShadow,
+              },
+            ]}
+            onPress={() => {
+              if (params.lesson_id) {
+                router.push({
+                  pathname: "/lessons/lesson-player",
+                  params: { lesson_id: params.lesson_id },
+                });
+              }
+            }}
+          >
+            <View style={mainStyles.demoLeft}>
+              <Text style={mainStyles.demoEmoji}>
+                {profile.type === "struggling"
+                  ? "▶️"
+                  : profile.type === "explorer"
+                  ? "🚀"
+                  : "🎮"}
+              </Text>
+              <View>
+                <Text style={mainStyles.demoTitle}>
+                  {profile.type === "struggling"
+                    ? "See it visually"
+                    : profile.type === "explorer"
+                    ? "Launch animation!"
+                    : "See it move!"}
+                </Text>
+                <Text style={mainStyles.demoSub}>
+                  {profile.type === "struggling"
+                    ? "Watch a simple animation"
+                    : profile.type === "explorer"
+                    ? "Full interactive demo"
+                    : "Play a quick demo"}
+                </Text>
+              </View>
             </View>
-          </View>
-          <View style={styles.demoArrow}>
-            <Ionicons name="arrow-forward" size={18} color="#fff" />
-          </View>
-        </Pressable>
+            <View style={mainStyles.demoArrow}>
+              <Ionicons name="arrow-forward" size={18} color="#fff" />
+            </View>
+          </Pressable>
+        </FadeIn>
 
-        <View style={{ height: 24 }} />
+        <View style={{ height: 32 }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#F7F5FF" },
+const mainStyles = StyleSheet.create({
+  safeArea: { flex: 1 },
   scroll: { flex: 1 },
   scrollContent: { paddingTop: 16, paddingHorizontal: 16, paddingBottom: 32 },
 
@@ -364,16 +1062,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 10,
     paddingBottom: 14,
-    backgroundColor: "#fff",
     borderBottomWidth: 1,
-    borderBottomColor: "#EFEFEF",
+    borderBottomColor: "rgba(0,0,0,0.07)",
     gap: 8,
   },
   backButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#F2F2F2",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -382,195 +1078,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 3,
     borderRadius: 20,
-    backgroundColor: "#EDE9FF",
   },
   chapterBadgeText: {
     fontSize: 10,
     fontWeight: "700",
-    color: "#7C5CBF",
     letterSpacing: 0.4,
   },
   headerTitle: {
     fontSize: 16,
-    fontWeight: "800",
-    color: "#1A1A2E",
+    fontWeight: "900",
     textAlign: "center",
   },
-  headerTagline: { fontSize: 11, color: "#888", fontStyle: "italic" },
-
-  tierBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    shadowColor: "#000",
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
-  },
-  tierDot: { width: 8, height: 8, borderRadius: 4 },
-  tierText: { fontSize: 13, fontWeight: "700" },
+  headerTagline: { fontSize: 11, fontStyle: "italic" },
 
   section: { marginBottom: 16 },
-  sectionLabel: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#94A3B8",
-    letterSpacing: 1,
-    marginBottom: 8,
-  },
 
   transmuteCard: {
-    borderRadius: 16,
-    padding: 16,
-    backgroundColor: "#fff",
-    borderWidth: 1.5,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
-  },
-  transmuteText: { fontSize: 15, color: "#1E293B", lineHeight: 24 },
-  placeholderText: {
-    fontSize: 13,
-    color: "#94A3B8",
-    lineHeight: 20,
-    fontStyle: "italic",
-  },
-
-  // OVERLOAD – SimpleListView
-  simpleListCard: {
-    backgroundColor: "#0F172A",
-    borderRadius: 18,
-    padding: 20,
-  },
-  simpleListHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-    gap: 8,
-  },
-  simpleListTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#F9FAFB",
-  },
-  simpleListItem: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 12,
-  },
-  simpleListBullet: {
-    fontSize: 22,
-    color: "#E5E7EB",
-    marginRight: 8,
-    lineHeight: 26,
-  },
-  simpleListText: {
-    flex: 1,
-    fontSize: 22,
-    lineHeight: 30,
-    color: "#F9FAFB",
-  },
-
-  // OPTIMAL – StandardProseView
-  standardProseContainer: {
-    flexDirection: "row",
-    gap: 16,
-  },
-  standardProseMain: {
-    flex: 3,
-  },
-  standardProseHeading: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#0F172A",
-    marginBottom: 8,
-  },
-  standardProseText: {
-    fontSize: 15,
-    lineHeight: 24,
-    color: "#1E293B",
-  },
-  vocabSidebar: {
-    flex: 1.4,
-    padding: 10,
-    borderRadius: 14,
-    backgroundColor: "#EEF2FF",
-  },
-  vocabSidebarLabel: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#4F46E5",
-    marginBottom: 8,
-    letterSpacing: 0.6,
-  },
-  vocabChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: "#FFFFFF",
-    marginBottom: 6,
-  },
-  vocabChipText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#1E293B",
-  },
-
-  // LOW_LOAD – StoryModeView
-  storyModeContainer: {
-    backgroundColor: "#ECFEFF",
-    borderRadius: 18,
+    borderRadius: 20,
     padding: 18,
-  },
-  storyHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-    gap: 10,
-  },
-  jaxAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#0EA5E9",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  jaxAvatarText: {
-    fontSize: 26,
-  },
-  storyTitle: {
-    fontSize: 17,
-    fontWeight: "800",
-    color: "#0F172A",
-  },
-  storySubtitle: {
-    fontSize: 12,
-    color: "#0369A1",
-  },
-  storyBody: {
-    marginTop: 6,
-    fontSize: 16,
-    lineHeight: 26,
-    color: "#022C22",
+    borderWidth: 1.5,
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
 
   metricsRow: { flexDirection: "row", gap: 8 },
 
   keywordsCard: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
+    borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
   },
   keywordsWrap: {
     flexDirection: "row",
@@ -585,44 +1123,42 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   keywordText: { fontSize: 12, fontWeight: "700" },
-  keywordCount: { fontSize: 11, color: "#64748B", fontWeight: "600" },
+  keywordCount: { fontSize: 11, fontWeight: "600" },
 
   rawToggle: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginBottom: 0,
   },
   rawCard: {
     borderRadius: 14,
     padding: 14,
-    backgroundColor: "#F8FAFC",
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    marginTop: 8,
   },
-  rawText: { fontSize: 13, color: "#475569", lineHeight: 20 },
+  rawText: { fontSize: 13, lineHeight: 20 },
 
   demoCard: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#5B3FA6",
-    borderRadius: 20,
-    padding: 18,
+    borderRadius: 22,
+    padding: 20,
     marginTop: 4,
-    shadowColor: "#5B3FA6",
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
     shadowOffset: { width: 0, height: 6 },
     elevation: 4,
   },
   demoLeft: { flexDirection: "row", alignItems: "center", gap: 14 },
   demoEmoji: { fontSize: 32 },
-  demoTitle: { fontSize: 16, fontWeight: "800", color: "#fff" },
-  demoSub: { fontSize: 11, color: "rgba(255,255,255,0.7)" },
+  demoTitle: { fontSize: 16, fontWeight: "900", color: "#fff" },
+  demoSub: { fontSize: 11, color: "rgba(255,255,255,0.75)", marginTop: 1 },
   demoArrow: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
     justifyContent: "center",
