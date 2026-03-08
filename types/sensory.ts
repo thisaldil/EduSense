@@ -30,6 +30,8 @@ export type HapticCue = {
   atMs: number;
   pattern: string;
   sceneId?: string;
+  channel?: string;
+  intensity?: number;
 };
 
 /** Narration cue for TTS; backend sends as narration[]. */
@@ -76,6 +78,8 @@ export function mapBackendOverlayToSensoryOverlay(
     atMs: h.at,
     pattern: h.pattern as HapticCue["pattern"],
     sceneId: h.scene_id ?? findSceneIdForTime(h.at),
+    channel: h.channel,
+    intensity: h.intensity,
   }));
 
   const narration = backend.narration.map((n, index) => ({

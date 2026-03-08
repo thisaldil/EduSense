@@ -12,7 +12,7 @@ import {
 } from "react-native";
 
 import { Colors, Typography } from "@/constants/theme";
-import { getActivities, getLessonActivities } from "@/services/lessons";
+import { getActivities, getLesson, getLessonActivities } from "@/services/lessons";
 import type {
   Activity,
   CognitiveLoad,
@@ -89,6 +89,7 @@ export default function ConceptPlaygroundScreen() {
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(
     null
   );
+  const [lessonTopic, setLessonTopic] = useState<string | null>(null);
   const [lastScorePercent, setLastScorePercent] = useState<number | null>(null);
   const [lastFeedback, setLastFeedback] = useState<string | null>(null);
 
@@ -96,13 +97,39 @@ export default function ConceptPlaygroundScreen() {
     setLoading(true);
     setLoadError(null);
     try {
+      let topic: string | null = null;
+      if (lessonId) {
+        try {
+          const lesson = await getLesson(lessonId);
+          topic = lesson.subject ?? lesson.title ?? null;
+          setLessonTopic(topic);
+        } catch {
+          setLessonTopic(null);
+        }
+      } else {
+        setLessonTopic(null);
+      }
+
       const load = filterCognitiveLoad ?? undefined;
       const type = filterActivityType ?? undefined;
-      const list = lessonId
-        ? await getLessonActivities(lessonId, { cognitive_load: load, activity_type: type })
-        : await getActivities(
-            load || type ? { cognitive_load: load, activity_type: type } : undefined
+      let list: Activity[];
+      if (lessonId) {
+        list = await getLessonActivities(lessonId, {
+          topic: topic ?? undefined,
+          cognitive_load: load,
+          activity_type: type,
+        });
+        if (topic) {
+          const normalizedTopic = topic.trim().toLowerCase();
+          list = list.filter(
+            (a) => a.topic?.trim().toLowerCase() === normalizedTopic
           );
+        }
+      } else {
+        list = await getActivities(
+          load || type ? { cognitive_load: load, activity_type: type } : undefined
+        );
+      }
       setActivities(list ?? []);
     } catch (e: unknown) {
       const message =

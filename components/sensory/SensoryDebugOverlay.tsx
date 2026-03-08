@@ -27,7 +27,7 @@ export function SensoryDebugOverlay() {
         Sensory Debug
       </Text>
       {lastCues.slice(0, MAX_VISIBLE).map((cue, i) => (
-        <View key={`${cue.id}-${cue.timeMs}`} style={{ marginTop: 4 }}>
+        <View key={`debug-cue-${i}`} style={{ marginTop: 4 }}>
           <Text style={{ color: "#A5B4FC", fontSize: 10 }}>
             {cue.type} · {Math.round(cue.timeMs)}ms
           </Text>

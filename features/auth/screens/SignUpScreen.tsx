@@ -109,9 +109,14 @@ export function SignUpScreen() {
       // Registration successful, navigate to home with tabs
       router.replace("/(tabs)");
     } catch (error: any) {
-      const errorMessage =
-        error.message || "Registration failed. Please try again.";
-      Alert.alert("Registration Failed", errorMessage);
+      const message = error?.message || "Registration failed. Please try again.";
+      const fieldErrors = error?.errors as Record<string, string[]> | undefined;
+      const details = fieldErrors
+        ? Object.entries(fieldErrors)
+            .map(([k, v]) => `${k}: ${(v as string[]).join(", ")}`)
+            .join("\n")
+        : "";
+      Alert.alert("Registration Failed", details ? `${message}\n\n${details}` : message);
     } finally {
       setIsSubmitting(false);
     }
