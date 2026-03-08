@@ -15,9 +15,9 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 
-import { Colors } from "@/constants/theme";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNeuroState } from "@/context/NeuroStateContext";
+import { useCognitiveTheme } from "@/hooks/use-cognitive-theme";
 
 type Subject = "Physics" | "Biology" | "Cognition" | "Skills";
 
@@ -96,6 +96,7 @@ export default function HomeScreen() {
   const userInitial = userName.charAt(0).toUpperCase();
   const [search, setSearch] = useState("");
   const { state: neuroState } = useNeuroState();
+  const { theme: cognitiveTheme } = useCognitiveTheme();
 
   const needsCalibration =
     (user as any)?.is_calibrated !== true &&
@@ -151,7 +152,7 @@ export default function HomeScreen() {
           <Ionicons
             name={SUBJECT_ICONS[item.subject]}
             size={32}
-            color={Colors.deepBlue}
+            color={cognitiveTheme.brand.primary}
           />
         </View>
 
@@ -203,7 +204,7 @@ export default function HomeScreen() {
           <Ionicons
             name={SUBJECT_ICONS[item.subject]}
             size={28}
-            color={Colors.deepBlue}
+            color={cognitiveTheme.brand.primary}
           />
         </View>
 
@@ -235,12 +236,7 @@ export default function HomeScreen() {
         ? "High · Simplified"
         : "Optimal · Balanced";
 
-  const neuroColor =
-    neuroState.currentState === "LOW_LOAD"
-      ? "#3B82F6"
-      : neuroState.currentState === "OVERLOAD"
-        ? "#F97316"
-        : "#22C55E";
+  const neuroColor = cognitiveTheme.brand.tabBadge;
 
   return (
     <SafeAreaView className="flex-1 bg-brand-background">
@@ -252,7 +248,10 @@ export default function HomeScreen() {
         {/* Header */}
         <View className="flex-row justify-between items-center px-5 pt-4 pb-5">
           <View className="flex-row items-center gap-3">
-            <View className="w-[52px] h-[52px] rounded-[26px] bg-teal items-center justify-center overflow-hidden">
+            <View
+              className="w-[52px] h-[52px] rounded-[26px] items-center justify-center overflow-hidden"
+              style={{ backgroundColor: cognitiveTheme.brand.secondary }}
+            >
               {user?.avatar_url ? (
                 <Image
                   source={{ uri: user.avatar_url }}
@@ -289,7 +288,7 @@ export default function HomeScreen() {
             <Ionicons
               name="settings-outline"
               size={24}
-              color={Colors.deepBlue}
+              color={cognitiveTheme.brand.primary}
             />
           </Pressable>
         </View>
@@ -327,12 +326,12 @@ export default function HomeScreen() {
           <Ionicons
             name="search"
             size={20}
-            color={Colors.light.textSecondary}
+            color={cognitiveTheme.semantic.textSecondary}
           />
           <TextInput
             className="flex-1 font-sans text-base text-brand-text"
             placeholder="What do you want to learn?"
-            placeholderTextColor={Colors.light.textSecondary}
+            placeholderTextColor={cognitiveTheme.semantic.textSecondary}
             value={search}
             onChangeText={setSearch}
           />
@@ -354,13 +353,16 @@ export default function HomeScreen() {
             className="w-full h-[200px] justify-end"
             imageStyle={{ borderRadius: 20 }}
           >
-            <View className="absolute inset-0 bg-deep-blue/85" />
+            <View
+              className="absolute inset-0"
+              style={{ backgroundColor: `${cognitiveTheme.brand.primary}D9` }}
+            />
             <View className="p-5 gap-2">
               <View className="flex-row items-center self-start bg-white/25 px-3 py-1.5 rounded-full gap-1.5">
                 <Ionicons
                   name="sparkles"
                   size={16}
-                  color={Colors.brightOrange}
+                  color={cognitiveTheme.brand.accent}
                 />
                 <Text className="text-xs font-sans-semibold text-white">
                   Start Learning
@@ -383,7 +385,10 @@ export default function HomeScreen() {
               Continue Learning 📚
             </Text>
             <Pressable hitSlop={10} onPress={() => router.push("/progress")}>
-              <Text className="font-sans-medium text-sm text-deep-blue">
+              <Text
+                className="font-sans-medium text-sm"
+                style={{ color: cognitiveTheme.brand.primary }}
+              >
                 See all
               </Text>
             </Pressable>

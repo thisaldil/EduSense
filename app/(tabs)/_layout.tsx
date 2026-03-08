@@ -3,31 +3,30 @@ import React from "react";
 import { StyleSheet, View } from "react-native";
 
 import { IconSymbol } from "@/components/ui/icon-symbol";
-import { Colors } from "@/constants/theme";
-import { useNeuroState } from "@/context/NeuroStateContext";
+import { useCognitiveTheme } from "@/hooks/use-cognitive-theme";
 
 export default function TabLayout() {
-  const { state } = useNeuroState();
+  const { theme: cognitiveTheme } = useCognitiveTheme();
 
-  const badgeColor =
-    state.currentState === "LOW_LOAD"
-      ? "#3B82F6"
-      : state.currentState === "OVERLOAD"
-        ? "#F97316"
-        : "#22C55E";
+  const badgeColor = cognitiveTheme.brand.tabBadge;
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors.deepBlue,
-        tabBarInactiveTintColor: Colors.light.tabIconDefault,
+        tabBarActiveTintColor: cognitiveTheme.semantic.tabIconSelected,
+        tabBarInactiveTintColor: cognitiveTheme.semantic.tabIconDefault,
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: Colors.light.background,
-          borderTopColor: Colors.light.border,
+          backgroundColor: cognitiveTheme.semantic.background,
+          borderTopColor: cognitiveTheme.semantic.border,
           borderTopWidth: 1,
           height: 64,
+          shadowColor: cognitiveTheme.brand.primary,
+          shadowOpacity: 0.08,
+          shadowRadius: 10,
+          elevation: 8,
         },
+        tabBarActiveBackgroundColor: `${cognitiveTheme.brand.primary}10`,
         tabBarLabelStyle: {
           fontFamily: "Inter_500Medium",
           fontSize: 12,
@@ -44,7 +43,10 @@ export default function TabLayout() {
               <View
                 style={[
                   styles.neuroDot,
-                  { backgroundColor: badgeColor },
+                  {
+                    backgroundColor: badgeColor,
+                    borderColor: cognitiveTheme.semantic.background,
+                  },
                 ]}
               />
             </View>
