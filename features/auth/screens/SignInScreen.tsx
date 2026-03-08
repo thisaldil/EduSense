@@ -45,8 +45,8 @@ export function SignInScreen() {
       // Login successful, navigate to home with tabs
       router.replace("/(tabs)");
     } catch (error: any) {
-      const errorMessage = error.message || "Login failed. Please check your credentials.";
-      Alert.alert("Login Failed", errorMessage);
+      const message = error?.message || "Login failed. Please check your credentials.";
+      Alert.alert("Login Failed", message);
     } finally {
       setIsSubmitting(false);
     }
