@@ -29,6 +29,7 @@ import { Colors, Typography } from "@/constants/theme";
 import { useAnalyticsLogger } from "@/context/AnalyticsLoggerContext";
 import { useNeuroState } from "@/context/NeuroStateContext";
 import { neuroApi } from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 // ─────────────────────────────────────────────────────────────
 // Constants
@@ -648,6 +649,25 @@ const BrainSyncScreen: React.FC = () => {
 
   const { setBaselineState } = useNeuroState();
   const { resetBuffer } = useAnalyticsLogger();
+  const { user, isAuthenticated, isLoading } = useAuth();
+
+  // Only allow authenticated users who still need calibration to stay on this screen.
+  useEffect(() => {
+    if (isLoading) return;
+
+    if (!isAuthenticated) {
+      router.replace("/welcome");
+      return;
+    }
+
+    const hasBaseline =
+      (user as any)?.is_calibrated === true ||
+      (user as any)?.baseline_cognitive_load != null;
+
+    if (hasBaseline) {
+      router.replace("/(tabs)");
+    }
+  }, [isAuthenticated, isLoading, user]);
 
   useEffect(() => {
     Animated.spring(progress, {

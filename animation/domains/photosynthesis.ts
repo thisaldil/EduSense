@@ -29,6 +29,7 @@ export const keywords = [
   "sunlight",
   "leaf",
   "leaves",
+  "energy", // e.g. "Energy" concept (light → chemical energy)
 ];
 
 export function drawBackground(ctx: Ctx, W: number, H: number): void {

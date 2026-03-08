@@ -16,20 +16,43 @@ import {
 import { Colors, Typography } from "@/constants/theme";
 import { createLesson } from "@/services/lessons";
 
-const SUBJECT_CHIPS = [
-  { id: "science", label: "Science", icon: "flask", color: "#E8F5E9" },
-  { id: "physics", label: "Physics", icon: "planet", color: "#E3F2FD" },
-  { id: "literature", label: "Literature", icon: "book", color: "#FFF3E0" },
-  { id: "math", label: "Math", icon: "calculator", color: "#F3E5F5" },
-] as const;
-
-type SubjectId = (typeof SUBJECT_CHIPS)[number]["id"];
-
 const generateSessionId = () =>
   `${Date.now().toString(36)}-${Math.random().toString(16).slice(2)}`;
 
+function inferLessonMetaFromText(content: string): { title: string; subject: string } {
+  const trimmed = content.trim();
+  if (!trimmed) {
+    return { title: "Lesson", subject: "General" };
+  }
+
+  const firstLine = trimmed.split(/\r?\n/)[0] ?? trimmed;
+  const sentence = firstLine.split(/[.!?]/)[0] || firstLine;
+  const match =
+    sentence.match(/^(.{0,80}?)(?:\s+is\b|\s+are\b|[:\-—])/i) ??
+    sentence.match(/^(.{0,80}?)\b(using|about|for)\b/i);
+
+  let raw = (match && match[1]) || sentence;
+  raw = raw.replace(/["“”]/g, "").trim();
+
+  if (!raw || raw.length < 3) {
+    return { title: "Lesson", subject: "General" };
+  }
+
+  const words = raw.split(/\s+/).slice(0, 6);
+  const phrase = words.join(" ");
+  const toTitleCase = (s: string) =>
+    s
+      .toLowerCase()
+      .split(" ")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+
+  const subject = toTitleCase(phrase);
+  const title = subject;
+  return { title, subject };
+}
+
 export default function NewLessonScreen() {
-  const [selectedSubject, setSelectedSubject] = useState<SubjectId>("science");
   const [text, setText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const maxChars = 2000;
@@ -46,17 +69,10 @@ export default function NewLessonScreen() {
 
     setIsLoading(true);
     try {
-      // Map subject IDs to proper subject names
-      const subjectMap: Record<SubjectId, string> = {
-        science: "Science",
-        physics: "Physics",
-        literature: "Literature",
-        math: "Math",
-      };
-
+      const { title, subject } = inferLessonMetaFromText(text);
       const lesson = await createLesson({
-        title: `Lesson: ${subjectMap[selectedSubject]}`,
-        subject: subjectMap[selectedSubject],
+        title,
+        subject,
         content: text,
       });
 
@@ -114,67 +130,10 @@ export default function NewLessonScreen() {
             </View>
             <Text style={styles.illustrationTitle}>Start Your Journey</Text>
             <Text style={styles.illustrationText}>
-              Choose a subject and add your lesson content. We'll transform it
-              into an amazing sensory experience!
+              Add your lesson content below. We'll transform it into an amazing
+              sensory experience!
             </Text>
           </View>
-        </View>
-
-        {/* Select Subject */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Choose subject</Text>
-          </View>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.subjectScroll}
-          >
-            {SUBJECT_CHIPS.map((chip) => {
-              const isActive = selectedSubject === chip.id;
-              return (
-                <Pressable
-                  key={chip.id}
-                  style={[
-                    styles.subjectCard,
-                    isActive && styles.subjectCardActive,
-                  ]}
-                  onPress={() => setSelectedSubject(chip.id)}
-                >
-                  <View
-                    style={[
-                      styles.subjectIconCircle,
-                      {
-                        backgroundColor: isActive
-                          ? Colors.deepBlue
-                          : chip.color,
-                      },
-                    ]}
-                  >
-                    <Ionicons
-                      name={chip.icon as any}
-                      size={28}
-                      color={isActive ? "#FFFFFF" : Colors.deepBlue}
-                    />
-                  </View>
-                  <Text
-                    style={[
-                      styles.subjectLabel,
-                      isActive && styles.subjectLabelActive,
-                    ]}
-                  >
-                    {chip.label}
-                  </Text>
-                  {isActive && (
-                    <View style={styles.checkBadge}>
-                      <Ionicons name="checkmark" size={14} color="#FFFFFF" />
-                    </View>
-                  )}
-                </Pressable>
-              );
-            })}
-          </ScrollView>
         </View>
 
         {/* Lesson Content */}
@@ -255,7 +214,7 @@ Example: 'Photosynthesis is how plants make their food using sunlight, water, an
           style={({ pressed }) => [
             styles.generateButton,
             { transform: [{ scale: pressed ? 0.98 : 1 }] },
-            (text.length === 0 || isLoading) && styles.generateButtonDisabled,
+          (text.length === 0 || isLoading) && styles.generateButtonDisabled,
           ]}
           onPress={handleGenerate}
           disabled={text.length === 0 || isLoading}
@@ -406,59 +365,6 @@ const styles = StyleSheet.create({
   tipButton: {
     width: 32,
     height: 32,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  // Subject Cards
-  subjectScroll: {
-    paddingHorizontal: 20,
-    gap: 12,
-  },
-  subjectCard: {
-    width: 110,
-    backgroundColor: Colors.light.background,
-    borderRadius: 16,
-    padding: 16,
-    alignItems: "center",
-    gap: 8,
-    borderWidth: 2,
-    borderColor: "transparent",
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  subjectCardActive: {
-    borderColor: Colors.deepBlue,
-    shadowColor: Colors.deepBlue,
-    shadowOpacity: 0.2,
-  },
-  subjectIconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  subjectLabel: {
-    ...Typography.label,
-    color: Colors.light.text,
-    textAlign: "center",
-  },
-  subjectLabelActive: {
-    color: Colors.deepBlue,
-    fontFamily: "Inter_600SemiBold",
-  },
-  checkBadge: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: Colors.teal,
     alignItems: "center",
     justifyContent: "center",
   },

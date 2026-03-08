@@ -7,16 +7,25 @@ import { exampleUsage } from "@/animation/scriptGenerator";
 type Props = {
   /** Whether the animation should currently be playing */
   isPlaying: boolean;
+  /** Engine-ready script from backend. Falls back to exampleUsage() if not provided. */
+  script?: any | null;
 };
 
 /**
  * Web-specific implementation of the animation canvas.
  * Uses a regular HTML <canvas> and the same AnimationEngine as the original React web app.
  */
-export function AnimationCanvasNative({ isPlaying }: Props) {
+export function AnimationCanvasNative({ isPlaying, script }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<AnimationEngine | null>(null);
-  const scriptRef = useRef(exampleUsage());
+  const scriptRef = useRef<any>(script ?? exampleUsage());
+
+  // Keep scriptRef in sync with latest prop
+  useEffect(() => {
+    if (script) {
+      scriptRef.current = script;
+    }
+  }, [script]);
 
   // Initialize engine once when the canvas is ready
   useEffect(() => {
@@ -50,6 +59,24 @@ export function AnimationCanvasNative({ isPlaying }: Props) {
       engine.pause();
     }
   }, [isPlaying]);
+
+  // When a NEW script arrives, swap it into the existing engine and reset playback.
+  useEffect(() => {
+    if (!script) return;
+    const engine = engineRef.current;
+    scriptRef.current = script;
+    if (!engine) return;
+
+    (engine as any).script = script;
+    (engine as any).currentTime = 0;
+    (engine as any).reset?.();
+
+    if (isPlaying) {
+      engine.play();
+    } else {
+      engine.draw?.();
+    }
+  }, [script, isPlaying]);
 
   return (
     <View style={styles.container}>

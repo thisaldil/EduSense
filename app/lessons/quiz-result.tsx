@@ -3,7 +3,6 @@ import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -135,45 +134,6 @@ export default function QuizResultScreen() {
     return "Keep going — you’re learning!";
   }, [level]);
 
-  const subLabel = "Newton's First Law";
-
-  const handleReview = () => {
-    if (params.quiz_id) {
-      router.push({
-        pathname: "/lessons/quiz-review",
-        params: {
-          quiz_id: params.quiz_id,
-          lesson_id: params.lesson_id,
-        },
-      });
-    } else {
-      Alert.alert("Error", "Quiz ID is missing.");
-    }
-  };
-
-  const handleReplay = () => {
-    Alert.alert(
-      "Replay lesson?",
-      "If you continue, this lesson will start again from the beginning.",
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Replay",
-          style: "default",
-          onPress: () => {
-            router.replace({
-              pathname: "/lessons/lesson-player",
-              params: { lesson_id: params.lesson_id },
-            });
-          },
-        },
-      ],
-    );
-  };
-
   const handleContinue = () => {
     router.push({
       pathname: "/lessons/concept-playground",
@@ -184,21 +144,17 @@ export default function QuizResultScreen() {
     });
   };
 
+  const handleGoHome = () => {
+    router.replace("/(tabs)");
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.root}>
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.appBar}>
-            <Pressable
-              style={styles.iconCircle}
-              onPress={() => router.back()}
-              hitSlop={10}
-            >
-              <Ionicons name="close" size={20} color={Colors.light.text} />
-            </Pressable>
-            <Text style={styles.headerTitle}>Quiz completed</Text>
-            <View style={styles.iconCircle} />
+            <Text style={styles.headerTitle}>Done!</Text>
           </View>
         </View>
 
@@ -218,8 +174,7 @@ export default function QuizResultScreen() {
               {/* Summary card */}
               <View style={styles.summaryCard}>
                 <Text style={styles.summaryEmoji}>🎉</Text>
-                <Text style={styles.summaryTitle}>Quiz Completed!</Text>
-                <Text style={styles.summarySubtitle}>{subLabel}</Text>
+                <Text style={styles.summaryTitle}>You did it!</Text>
 
                 <View style={styles.scoreCircle}>
                   <Text style={styles.scoreMain}>
@@ -243,11 +198,10 @@ export default function QuizResultScreen() {
                     size={20}
                     color={Colors.deepBlue}
                   />
-                  <Text style={styles.sectionTitle}>Cognitive Load</Text>
+                  <Text style={styles.sectionTitle}>How did it feel?</Text>
                 </View>
                 <Text style={styles.cognitiveLoadDescription}>
-                  Predicted mental effort from your quiz behavior (answers,
-                  timing, changes)
+                  We noticed how hard you were thinking during the quiz.
                 </Text>
 
                 <View style={styles.cognitiveLoadIndicator}>
@@ -337,94 +291,46 @@ export default function QuizResultScreen() {
                 <View style={styles.cognitiveLoadInfo}>
                   <Text style={styles.cognitiveLoadInfoText}>
                     {cognitiveLoadDisplay === "low"
-                      ? "You're processing this material comfortably. Great job! 🎉"
+                      ? "You got this! Nice work. 🎉"
                       : cognitiveLoadDisplay === "medium"
-                        ? "You're putting in moderate effort. Keep practicing! 💪"
+                        ? "Good effort. Keep practicing! 💪"
                         : cognitiveLoadDisplay === "high"
-                          ? "This concept is challenging. Take breaks and review more. 📚"
-                          : "No cognitive load prediction was returned for this attempt. Complete another quiz to see a prediction."}
+                          ? "This was tricky. Take a break, then try again. 📚"
+                          : "Do another quiz to see how it felt."}
                   </Text>
                 </View>
               </View>
 
-              {/* Suggested actions */}
+              {/* Follow-up actions */}
               <View style={styles.actionsCard}>
-                <Text style={styles.sectionTitle}>
-                  What would you like to do?
-                </Text>
                 <Pressable
-                  style={[
-                    styles.actionRow,
-                    level === "medium" && styles.actionRowPrimary,
-                  ]}
-                  onPress={handleReview}
-                >
-                  <View style={styles.actionIconCircle}>
-                    <Ionicons
-                      name="refresh-circle"
-                      size={22}
-                      color={Colors.deepBlue}
-                    />
-                  </View>
-                  <View style={styles.actionTextBlock}>
-                    <Text style={styles.actionTitle}>Review weak concepts</Text>
-                    <Text style={styles.actionBody}>
-                      Revisit explanations for topics that need more practice.
-                    </Text>
-                  </View>
-                  <Ionicons
-                    name="chevron-forward"
-                    size={18}
-                    color={Colors.light.textSecondary}
-                  />
-                </Pressable>
-
-                <Pressable
-                  style={[
-                    styles.actionRow,
-                    level === "low" && styles.actionRowPrimary,
-                  ]}
-                  onPress={handleReplay}
-                >
-                  <View style={styles.actionIconCircle}>
-                    <Ionicons
-                      name="play-circle"
-                      size={22}
-                      color={Colors.deepBlue}
-                    />
-                  </View>
-                  <View style={styles.actionTextBlock}>
-                    <Text style={styles.actionTitle}>Replay experience</Text>
-                    <Text style={styles.actionBody}>
-                      Walk through the interactive lesson again from the start.
-                    </Text>
-                  </View>
-                  <Ionicons
-                    name="chevron-forward"
-                    size={18}
-                    color={Colors.light.textSecondary}
-                  />
-                </Pressable>
-
-                <Pressable
-                  style={[
-                    styles.actionRow,
-                    level === "high" && styles.actionRowPrimary,
-                  ]}
+                  style={[styles.actionRow, styles.actionRowPrimary]}
                   onPress={handleContinue}
                 >
-                  <View style={styles.actionIconCircle}>
-                    <Ionicons
-                      name="arrow-forward-circle"
-                      size={22}
-                      color={Colors.deepBlue}
-                    />
-                  </View>
                   <View style={styles.actionTextBlock}>
-                    <Text style={styles.actionTitle}>Continue learning</Text>
+                    <Text style={styles.actionTitle}>Try some activities</Text>
                     <Text style={styles.actionBody}>
-                      Move on to the next lesson in your learning path.
+                      Play quick games to practice.
                     </Text>
+                  </View>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={18}
+                    color={Colors.light.textSecondary}
+                  />
+                </Pressable>
+                <Pressable
+                  style={[styles.actionRow, styles.actionRowSecondary]}
+                  onPress={handleGoHome}
+                >
+                  <Ionicons
+                    name="home-outline"
+                    size={20}
+                    color={Colors.light.text}
+                  />
+                  <View style={styles.actionTextBlock}>
+                    <Text style={styles.actionTitle}>Finish</Text>
+                    <Text style={styles.actionBody}>Go to main page</Text>
                   </View>
                   <Ionicons
                     name="chevron-forward"
@@ -499,11 +405,6 @@ const styles = StyleSheet.create({
     ...Typography.bodyMedium,
     fontSize: 18,
     color: Colors.light.text,
-  },
-  summarySubtitle: {
-    ...Typography.small,
-    color: Colors.light.textSecondary,
-    marginBottom: 4,
   },
   scoreCircle: {
     marginTop: 4,
@@ -681,6 +582,11 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(19,164,236,0.06)",
     borderWidth: 1,
     borderColor: Colors.deepBlue,
+  },
+  actionRowSecondary: {
+    backgroundColor: "#F9FAFB",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   actionIconCircle: {
     width: 32,

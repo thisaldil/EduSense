@@ -92,6 +92,10 @@ export class AnimationEngine {
   private lastTS: number | null = null;
   private rafId: any = null;
 
+  // Optional hook for platform-specific work after each frame
+  // (e.g. ctx.flush() + gl.endFrameEXP() on Expo GL).
+  private postFrame?: () => void;
+
   private onSceneChange?: (idx: number, scene: Scene) => void;
   private onTimeUpdate?: (time: number) => void;
   private onComplete?: () => void;
@@ -106,6 +110,7 @@ export class AnimationEngine {
       onSceneChange?: (idx: number, scene: Scene) => void;
       onTimeUpdate?: (time: number) => void;
       onComplete?: () => void;
+      postFrame?: () => void;
     },
   ) {
     this.ctx = ctx;
@@ -118,6 +123,7 @@ export class AnimationEngine {
       this.onSceneChange = callbacks.onSceneChange;
       this.onTimeUpdate = callbacks.onTimeUpdate;
       this.onComplete = callbacks.onComplete;
+      this.postFrame = callbacks.postFrame;
     }
   }
 
@@ -149,6 +155,11 @@ export class AnimationEngine {
   }
 
   reset() {
+    // When the script has been hot-swapped (e.g. Photosynthesis → Water Cycle),
+    // make sure we also re‑derive concept + domain so backgrounds/anchors update.
+    this.concept = this.script.concept || this.script.title || this.concept;
+    this.domain = detectDomain(this.concept, this.script.scenes);
+
     this.pause();
     this.currentTime = 0;
     this.renderFrame(0);
@@ -222,6 +233,9 @@ export class AnimationEngine {
 
     // Single universal renderer for all concepts/domains.
     renderUniversalScene(currentScene, domain, ctx, W, H, sceneElapsed);
+
+    // Allow platform-specific code (e.g. GL buffer swap) to run.
+    this.postFrame?.();
   }
 
   // Convenience: render current frame without advancing time (used on web)

@@ -97,6 +97,10 @@ export default function HomeScreen() {
   const [search, setSearch] = useState("");
   const { state: neuroState } = useNeuroState();
 
+  const needsCalibration =
+    (user as any)?.is_calibrated !== true &&
+    (user as any)?.baseline_cognitive_load == null;
+
   useEffect(() => {
     if (isLoading) return;
 
@@ -289,6 +293,34 @@ export default function HomeScreen() {
             />
           </Pressable>
         </View>
+
+        {/* New user calibration banner */}
+        {needsCalibration && (
+          <View className="mx-5 mb-2 rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 flex-row gap-3 items-center">
+            <View className="w-9 h-9 rounded-full bg-amber-100 items-center justify-center">
+              <Text className="text-lg">🧠</Text>
+            </View>
+            <View className="flex-1">
+              <Text className="font-sans-semibold text-[13px] text-amber-900">
+                New here? Please do a quick Brain Sync.
+              </Text>
+              <Text className="text-[11px] text-amber-800 mt-1">
+                As a new user, you just need to complete a simple 2-minute set of tasks so we can understand your cognitive load.
+              </Text>
+              <Pressable
+                className="mt-2 self-start rounded-full bg-amber-500 px-3 py-1.5"
+                onPress={async () => {
+                  await playTapFeedback();
+                  router.push("/calibration");
+                }}
+              >
+                <Text className="text-xs font-sans-semibold text-white">
+                  Start Brain Sync
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
 
         {/* Search */}
         <View className="flex-row items-center bg-brand-surface mx-5 px-4 py-3.5 rounded-2xl gap-3 shadow">

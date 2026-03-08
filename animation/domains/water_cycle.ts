@@ -27,7 +27,7 @@ export function drawAnchorCharacters(
   H: number,
   t: number,
 ) {
-  Shapes.drawSol(ctx, W * 0.2, H * 0.25, 60);
+  Shapes.drawSol(ctx, W * 0.2, H * 0.25, 60, t, 1);
   Shapes.drawCloud(ctx, W * 0.55, H * 0.22, 1.1, Math.sin(t * 0.03));
 }
 
