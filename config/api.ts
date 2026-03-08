@@ -15,7 +15,10 @@ import Constants from "expo-constants";
 
 // Get the base URL from environment variables or use default
 const getApiBaseUrl = (): string => {
-  // Check if we have an API URL in environment variables
+  // EXPO_PUBLIC_API_URL (Expo env) or apiUrl in app config
+  if (typeof process !== "undefined" && process.env?.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
   if (Constants.expoConfig?.extra?.apiUrl) {
     return Constants.expoConfig.extra.apiUrl;
   }
@@ -65,4 +68,5 @@ export const API_ENDPOINTS = {
   ACTIVITIES: "/api/activities",
   ANIMATION_NEURO_ADAPTIVE: "/api/animation/neuro-adaptive",
   SENSORY_OVERLAY: "/api/sensory/overlay",
+  TTS_SYNTHESIZE: "/api/tts/synthesize",
 } as const;

@@ -1,7 +1,6 @@
 import { HAPTIC_PATTERNS } from "@/constants/hapticPatterns";
 import { audioClient } from "@/services/audioClient";
 import { researchLogger } from "@/services/researchLogger";
-import { speechService } from "@/services/speech";
 import { useSensoryStore } from "@/store/sensoryStore";
 import type {
   SensoryOverlay,
@@ -98,8 +97,7 @@ export class SensoryManager {
   }
 
   async dispose() {
-    speechService.stop();
-    await audioClient.stopAllLoops();
+    await audioClient.stop();
     this.firedNarration.clear();
     this.firedHaptics.clear();
     useSensoryStore.getState().setOverlay(undefined);
@@ -137,10 +135,11 @@ export class SensoryManager {
     const overlay = this.overlay;
     if (!overlay) return;
     try {
-      speechService.speak(cue.text, {
-        speechRate: overlay.speechRate,
-        onDone: undefined,
-      });
+      audioClient.playNarrationFromBackend(
+        cue.text,
+        overlay.speechRate,
+        undefined,
+      );
     } catch (err) {
       console.warn("[SensoryManager] narration error", err);
     }

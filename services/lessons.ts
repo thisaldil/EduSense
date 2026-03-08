@@ -180,8 +180,9 @@ export interface GetActivitiesParams {
   activity_type?: "TRUE_FALSE" | "MCQ" | "MATCHING" | "FILL_BLANK_WORD_BANK";
 }
 
-/** Optional filters for GET /api/lessons/:lessonId/activities (topic inferred by backend from lesson) */
+/** Optional filters for GET /api/lessons/:lessonId/activities (topic inferred by backend from lesson, or pass topic to filter) */
 export interface GetLessonActivitiesParams {
+  topic?: string;
   cognitive_load?: "LOW" | "MEDIUM" | "HIGH";
   activity_type?: "TRUE_FALSE" | "MCQ" | "MATCHING" | "FILL_BLANK_WORD_BANK";
 }
@@ -198,10 +199,11 @@ export const getLessonActivities = async (
   params?: GetLessonActivitiesParams
 ): Promise<import("@/types/activities").Activity[]> => {
   const base = `${API_ENDPOINTS.LESSONS}/${lessonId}/activities`;
-  if (!params || (params.cognitive_load == null && params.activity_type == null)) {
+  if (!params || (params.cognitive_load == null && params.activity_type == null && params.topic == null)) {
     return apiGet<import("@/types/activities").Activity[]>(base);
   }
   const search = new URLSearchParams();
+  if (params.topic) search.set("topic", params.topic);
   if (params.cognitive_load) search.set("cognitive_load", params.cognitive_load);
   if (params.activity_type) search.set("activity_type", params.activity_type);
   const endpoint = `${base}?${search.toString()}`;

@@ -124,6 +124,39 @@ export const removeStoredUser = async (): Promise<void> => {
 /** Called when backend returns 401 so the app can clear auth state and redirect to login */
 let onUnauthorizedCallback: (() => void) | null = null;
 
+/**
+ * Format FastAPI-style error into a single message string.
+ * Handles detail as string or array of { loc, msg }.
+ */
+function formatApiErrorMessage(data: any, status: number): string {
+  if (data?.message && typeof data.message === "string") return data.message;
+  const d = data?.detail;
+  if (typeof d === "string") return d;
+  if (Array.isArray(d) && d.length > 0) {
+    const messages = d.map((e: any) => (e?.msg != null ? e.msg : String(e)));
+    return messages.join(". ");
+  }
+  if (status === 400) return "Bad request. Check your input and try again.";
+  if (status === 422) return "Validation failed. Check your input and try again.";
+  return "An error occurred";
+}
+
+/**
+ * Convert FastAPI validation detail array to { field: string[] } for UI.
+ */
+function detailArrayToErrors(detail: any[]): Record<string, string[]> {
+  const errors: Record<string, string[]> = {};
+  for (const e of detail) {
+    const msg = e?.msg ?? String(e);
+    const loc = e?.loc;
+    const field = Array.isArray(loc) ? loc[loc.length - 1] : "error";
+    const key = String(field);
+    if (!errors[key]) errors[key] = [];
+    errors[key].push(msg);
+  }
+  return errors;
+}
+
 export function setOnUnauthorized(callback: (() => void) | null): void {
   onUnauthorizedCallback = callback;
 }
@@ -162,17 +195,29 @@ export const apiRequest = async <T = any>(
       headers,
     });
 
-    const data = await response.json();
+    let data: any;
+    try {
+      data = await response.json();
+    } catch {
+      data = {};
+    }
 
     if (!response.ok) {
+      // In dev, log the full error response so you can see why the backend rejected the request
+      if (typeof __DEV__ !== "undefined" && __DEV__) {
+        console.warn(`[API] ${response.status} ${response.statusText}`, url, data);
+      }
       // Backend rejected the token (expired, invalid, etc.) – clear auth so user can sign in again
       if (response.status === 401) {
         await clearStoredAuth();
       }
+      // FastAPI: detail can be string or array of { loc, msg }; 400/422 often carry validation info
+      const message = formatApiErrorMessage(data, response.status);
+      const errors = data.errors ?? (Array.isArray(data.detail) ? detailArrayToErrors(data.detail) : undefined);
       const error: ApiError = {
-        message: data.detail || data.message || "An error occurred",
+        message,
         status: response.status,
-        errors: data.errors,
+        errors,
       };
       throw error;
     }
