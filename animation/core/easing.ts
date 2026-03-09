@@ -1,72 +1,140 @@
 /**
- * core/easing.ts — Animation math helpers.
- * Used by shapes, domain fallbacks, and timeline interpolation.
+ * animation/core/easing.ts
+ * Shared timing and interpolation helpers for the canvas renderer.
  */
 
-export const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
+export const clamp01 = (value: number): number => {
+  if (value <= 0) return 0;
+  if (value >= 1) return 1;
+  return value;
+};
 
-export const easeOut = (t: number): number => t * (2 - t);
+export const lerp = (from: number, to: number, t: number): number =>
+  from + (to - from) * t;
 
-export const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+export const easeInQuad = (t: number): number => {
+  const x = clamp01(t);
+  return x * x;
+};
 
-/** Returns 0→1 over `dur` ms starting at `startMs` ms into the scene. */
+export const easeOutQuad = (t: number): number => {
+  const x = clamp01(t);
+  return 1 - (1 - x) * (1 - x);
+};
+
+export const easeInOutQuad = (t: number): number => {
+  const x = clamp01(t);
+  if (x < 0.5) return 2 * x * x;
+  return 1 - Math.pow(-2 * x + 2, 2) / 2;
+};
+
+export const easeOutCubic = (t: number): number => {
+  const x = clamp01(t);
+  return 1 - Math.pow(1 - x, 3);
+};
+
+export const smoothstep = (t: number): number => {
+  const x = clamp01(t);
+  return x * x * (3 - 2 * x);
+};
+
+export const pingPong01 = (time: number): number => {
+  const m = ((time % 2) + 2) % 2;
+  return m <= 1 ? m : 2 - m;
+};
+
+export const pulse = (
+  timeSeconds: number,
+  speed = 1,
+  amount = 0.08,
+  base = 1,
+): number => base + Math.sin(timeSeconds * speed) * amount;
+
+export const oscillate = (
+  timeSeconds: number,
+  speed = 1,
+  min = -1,
+  max = 1,
+): number => lerp(min, max, (Math.sin(timeSeconds * speed) + 1) * 0.5);
+
+export const progress = (
+  elapsedMs: number,
+  startMs: number,
+  durationMs: number,
+): number => {
+  const safeDuration = Math.max(1, durationMs);
+  return clamp01((elapsedMs - startMs) / safeDuration);
+};
+
 export const fadeIn = (
-  elapsed: number,
-  startMs = 0,
-  dur = 600,
-): number => easeOut(clamp01((elapsed - startMs) / dur));
+  elapsedMs: number,
+  delayMs = 0,
+  durationMs = 500,
+): number => easeOutQuad(progress(elapsedMs, delayMs, durationMs));
 
-export function rgba(hex: string, a: number): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r},${g},${b},${a})`;
+export const fadeOut = (
+  elapsedMs: number,
+  delayMs = 0,
+  durationMs = 500,
+): number => 1 - easeOutQuad(progress(elapsedMs, delayMs, durationMs));
+
+export function rgba(hexColor: string, alpha: number): string {
+  const hex = hexColor.replace("#", "");
+  if (hex.length !== 6) return `rgba(255,255,255,${clamp01(alpha)})`;
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${clamp01(alpha)})`;
 }
 
-/** Timeline step from backend (actor.timeline[].at, .alpha, etc.) */
-export type TimelineStep = { at: number; alpha?: number };
+export type TimelineStep = {
+  at: number;
+  alpha?: number;
+};
 
-/**
- * Combine base alpha with actor.timeline envelope.
- * Used by orchestrator when drawing actors.
- */
 export function computeTimelineAlpha(
   actor: { timeline?: TimelineStep[] },
-  elapsed: number,
+  elapsedMs: number,
   baseAlpha: number,
 ): number {
-  const timeline = actor?.timeline;
-  if (!timeline || timeline.length === 0) return baseAlpha;
+  const timeline = Array.isArray(actor?.timeline)
+    ? actor.timeline
+        .filter((step) => step && Number.isFinite(step.at))
+        .sort((a, b) => a.at - b.at)
+    : [];
+
+  if (timeline.length === 0) return baseAlpha;
 
   let current: TimelineStep | null = null;
   let next: TimelineStep | null = null;
 
-  for (let i = 0; i < timeline.length; i++) {
+  for (let i = 0; i < timeline.length; i += 1) {
     const step = timeline[i];
-    if (elapsed >= step.at) {
+    if (elapsedMs >= step.at) {
       current = step;
       next = timeline[i + 1] ?? null;
-    } else {
-      next = step;
-      break;
+      continue;
     }
+    next = step;
+    break;
   }
 
   if (!current) return baseAlpha;
 
   const hasCurrentAlpha = typeof current.alpha === "number";
-  const hasNextAlpha = next && typeof next.alpha === "number";
+  const hasNextAlpha = typeof next?.alpha === "number";
+
   if (!hasCurrentAlpha && !hasNextAlpha) return baseAlpha;
 
-  if (hasCurrentAlpha && hasNextAlpha && next!.at > current.at) {
-    const span = next!.at - current.at || 1;
-    const t = easeOut(clamp01((elapsed - current.at) / span));
-    const interp =
-      (current.alpha as number) +
-      ((next!.alpha as number) - (current.alpha as number)) * t;
-    return baseAlpha * interp;
+  if (hasCurrentAlpha && hasNextAlpha && next && next.at > current.at) {
+    const t = easeInOutQuad((elapsedMs - current.at) / (next.at - current.at));
+    const mixed = lerp(current.alpha as number, next.alpha as number, t);
+    return baseAlpha * mixed;
   }
 
-  if (hasCurrentAlpha) return baseAlpha * (current.alpha as number);
+  if (hasCurrentAlpha) {
+    return baseAlpha * (current.alpha as number);
+  }
+
   return baseAlpha;
 }

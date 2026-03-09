@@ -1,4 +1,4 @@
-/**
+﻿/**
  * domains/water_energy_hydro.ts
  */
 
@@ -8,8 +8,8 @@ import {
   drawTurbine,
   drawWaterArrow,
   drawWave,
-} from "../core/shapes";
-import { fadeIn } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn } from "../../core/easing";
 
 type Ctx = any;
 

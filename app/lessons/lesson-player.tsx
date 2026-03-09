@@ -24,7 +24,6 @@ import { useSensory } from "@/hooks/useSensory";
 import { BiometricBanner } from "@/components/sensory/BiometricBanner";
 import { SensoryToggle } from "@/components/sensory/SensoryToggle";
 import { SensoryDebugOverlay } from "@/components/sensory/SensoryDebugOverlay";
-import { normalizeAnimationScript } from "@/animation/runtime";
 
 type AnimationScript = animationApi.NeuroAdaptiveAnimationScript;
 type Scene = AnimationScript["scenes"][0];
@@ -349,7 +348,7 @@ function useNeuroAdaptiveScript({
 
         if (lessonMatches && stateMatches) {
           lastStateRef.current = latest.cognitive_state;
-          setScript(normalizeAnimationScript(latest.script) as any);
+          setScript(latest.script);
           return;
         }
       }
@@ -374,7 +373,7 @@ function useNeuroAdaptiveScript({
       });
 
       lastStateRef.current = resolvedState;
-      setScript(normalizeAnimationScript(animation.script) as any);
+      setScript(animation.script);
     } catch (err: any) {
       setError(
         err?.message || "Unable to generate a visual explanation right now.",
@@ -458,7 +457,7 @@ export function LessonAnimationPanel({
               animated: true,
               viewOffset: 10,
             });
-          } catch {}
+          } catch { }
         }
         if (next >= script.duration) setIsPlaying(false);
         return next;
@@ -480,7 +479,7 @@ export function LessonAnimationPanel({
         animated: true,
         viewOffset: 10,
       });
-    } catch {}
+    } catch { }
   };
 
   const progress = script
@@ -561,32 +560,7 @@ export function LessonAnimationPanel({
               script={script}
               currentTimeMs={currentTime}
             />
-            {/* Dev-only overlay for Member 3 cues */}
-            <SensoryDebugOverlay />
-            {__DEV__ && (
-              <View style={panelSt.debugPill} pointerEvents="none">
-                <Text style={panelSt.debugText}>
-                  scene {activeSceneIdx + 1}/{script.scenes.length} · actors{" "}
-                  {currentScene?.actors?.length ?? 0} · t {Math.floor(currentTime)}
-                  ms
-                </Text>
-              </View>
-            )}
           </>
-        )}
-
-        {/* Scene label overlay */}
-        {script && !loading && !error && currentScene?.text && (
-          <View style={panelSt.sceneOverlay} pointerEvents="none">
-            <View style={panelSt.sceneNumPill}>
-              <Text style={panelSt.sceneNumText}>
-                {activeSceneIdx + 1}/{script.scenes.length}
-              </Text>
-            </View>
-            <Text style={panelSt.sceneOverlayText} numberOfLines={1}>
-              {currentScene.text}
-            </Text>
-          </View>
         )}
 
         {/* Bottom progress bar */}
@@ -598,6 +572,20 @@ export function LessonAnimationPanel({
           </View>
         )}
       </View>
+
+      {/* ── Scene narration (OUTSIDE canvas, below it) ── */}
+      {script && !loading && !error && currentScene?.text && (
+        <View style={panelSt.sceneNarration}>
+          <View style={panelSt.sceneNumPill}>
+            <Text style={panelSt.sceneNumText}>
+              {activeSceneIdx + 1}/{script.scenes.length}
+            </Text>
+          </View>
+          <Text style={panelSt.sceneNarrationText} numberOfLines={2}>
+            {currentScene.text}
+          </Text>
+        </View>
+      )}
 
       {/* ── Controls ── */}
       {script && (
@@ -635,6 +623,9 @@ export function LessonAnimationPanel({
         </View>
       )}
 
+      {/* ── Sensory overlay (OUTSIDE canvas) ── */}
+      <SensoryDebugOverlay />
+
       {/* ── Neuro equation ── */}
       {script && <NeuroEquation cognitiveState={cognitiveState} />}
 
@@ -657,7 +648,7 @@ export function LessonAnimationPanel({
               paddingHorizontal: 14,
               paddingVertical: 8,
             }}
-            onScrollToIndexFailed={() => {}}
+            onScrollToIndexFailed={() => { }}
             renderItem={({ item, index }) => (
               <SceneThumbnail
                 scene={item}
@@ -706,17 +697,17 @@ const panelSt = StyleSheet.create({
 
   canvasWrap: {
     width: "100%",
-    height: 260,
-    borderRadius: 18,
+    height: 320,
+    borderRadius: 20,
     overflow: "hidden",
-    backgroundColor: "#F8FAFF",
+    backgroundColor: "#0F172A",
     borderWidth: 1.5,
-    borderColor: "#DBEAFE",
+    borderColor: "rgba(37,99,235,0.15)",
     shadowColor: "#2563EB",
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -766,54 +757,42 @@ const panelSt = StyleSheet.create({
     textAlign: "center",
   },
 
-  sceneOverlay: {
-    position: "absolute",
-    bottom: 12,
-    left: 12,
-    right: 12,
+  sceneNarration: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    backgroundColor: "rgba(255,255,255,0.90)",
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    zIndex: 5,
+    gap: 10,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderWidth: 1,
-    borderColor: "rgba(37,99,235,0.15)",
+    borderColor: "#E2E8F0",
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   sceneNumPill: {
     backgroundColor: "#2563EB",
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    minWidth: 32,
+    alignItems: "center",
   },
   sceneNumText: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: "800",
     color: "#FFFFFF",
     letterSpacing: 0.5,
   },
-  sceneOverlayText: {
+  sceneNarrationText: {
     flex: 1,
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "600",
     color: "#1E293B",
-  },
-  debugPill: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    backgroundColor: "rgba(15,23,42,0.82)",
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    zIndex: 6,
-  },
-  debugText: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: "#E2E8F0",
+    lineHeight: 20,
   },
 
   progressBar: {

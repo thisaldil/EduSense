@@ -1,4 +1,4 @@
-/**
+﻿/**
  * domains/biomass_energy.ts
  */
 
@@ -9,8 +9,8 @@ import {
   drawFlame,
   drawSmoke,
   drawSugarcane,
-} from "../core/shapes";
-import { fadeIn } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn } from "../../core/easing";
 
 type Ctx = any;
 

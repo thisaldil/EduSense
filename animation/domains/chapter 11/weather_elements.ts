@@ -1,4 +1,4 @@
-/**
+﻿/**
  * domains/chapter 11/weather_elements.ts
  * Core visual for "Elements of Weather" (sunshine, temperature, wind, rainfall).
  */
@@ -12,8 +12,8 @@ import {
   drawAnemometer,
   drawThermometer,
   drawSunShadeIcons,
-} from "../core/shapes";
-import { fadeIn } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn } from "../../core/easing";
 
 type Ctx = any;
 
@@ -51,19 +51,19 @@ export function drawAnchorCharacters(
   H: number,
   t: number,
 ): void {
-  // Top‑left: sunshine (Sol + cloud)
+  // Topâ€‘left: sunshine (Sol + cloud)
   drawSol(ctx, W * 0.22, H * 0.18, 42, t, 1);
   drawCloud(ctx, W * 0.32, H * 0.2, 0.9, 0.9, t);
 
-  // Top‑right: rainfall icon
+  // Topâ€‘right: rainfall icon
   drawRainCloud(ctx, W * 0.72, H * 0.2, 1.0, 1, t);
   drawRainDrops(ctx, W * 0.72, H * 0.36, 5, 0.95);
 
-  // Bottom‑left: wind speed element
+  // Bottomâ€‘left: wind speed element
   drawWindLines(ctx, W * 0.28, H * 0.54, 1.0, 0.9, t);
   drawAnemometer(ctx, W * 0.42, H * 0.68, 0.95, 1, t);
 
-  // Bottom‑right: temperature with sun/shade hints
+  // Bottomâ€‘right: temperature with sun/shade hints
   drawThermometer(ctx, W * 0.72, H * 0.64, 1.05, 1, 0.6);
   drawSunShadeIcons(ctx, W * 0.86, H * 0.32, 0.9, 1);
 }
@@ -114,4 +114,5 @@ export function keywordFallback(
   drawWindLines(ctx, W * 0.64, H * 0.42, 0.9, a, t);
   drawThermometer(ctx, W * 0.8, H * 0.64, 0.9, a, 0.6);
 }
+
 

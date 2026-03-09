@@ -1,12 +1,12 @@
-import {
+﻿import {
   drawCloud,
   drawRainDrops,
   drawRainGauge,
   drawMMScale,
   drawClipboard,
   drawArrowLine,
-} from "../core/shapes";
-import { fadeIn, lerp, clamp01 } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn, lerp, clamp01 } from "../../core/easing";
 
 type Ctx = any;
 

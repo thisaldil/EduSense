@@ -1,4 +1,4 @@
-/**
+﻿/**
  * domains/electricity_safety.ts
  */
 
@@ -10,8 +10,8 @@ import {
   drawFuseSymbol,
   drawSafeTick,
   drawWarningTriangleBolt,
-} from "../core/shapes";
-import { fadeIn } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn } from "../../core/easing";
 
 type Ctx = any;
 

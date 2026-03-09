@@ -1,4 +1,4 @@
-/**
+﻿/**
  * domains/water_cycle.ts
  */
 
@@ -10,8 +10,8 @@ import {
   drawRiverArrow,
   drawSol,
   drawWaterDrop,
-} from "../core/shapes";
-import { clamp01, easeOut, fadeIn, lerp } from "../core/easing";
+} from "../../core/shapes";
+import { clamp01, easeOut, fadeIn, lerp } from "../../core/easing";
 
 type Ctx = any;
 

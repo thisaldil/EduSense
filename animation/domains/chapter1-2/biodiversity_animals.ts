@@ -1,11 +1,11 @@
-import {
+﻿import {
   drawFish,
   drawBird,
   drawButterfly,
   drawFrog,
   drawDeer,
-} from "../core/shapes";
-import { fadeIn } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn } from "../../core/easing";
 
 type Ctx = any;
 

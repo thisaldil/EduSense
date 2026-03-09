@@ -1,49 +1,9 @@
-/**
- * animationEngine.ts  —  Actor-Driven Cartoon Edition
- *
- * WHAT CHANGED FROM THE PREVIOUS VERSION
- * ────────────────────────────────────────
- * OLD: Bridge checked SCENE_RENDERERS["scene_1"…"scene_10"] — hardcoded
- *      photosynthesis cartoon. Broke for any other science topic.
- *
- * NEW render pipeline (per frame):
- *   1. drawSceneContext(ctx, W, H, concept, elapsed)
- *        → draws the right background for the domain
- *          (biology = green meadow, physics = grid room,
- *           earth = soil layers, space = starfield, etc.)
- *   2. For each actor in currentScene.actors:
- *        ACTOR_RENDERERS[actor.type]?.(ctx, actor, elapsed, W, H)
- *        → draws the cartoon character for that actor type
- *          using the backend's x/y/size/color/angle/length data
- *
- * This means the engine is fully data-driven:
- *   - Backend controls WHAT to draw (type, position, colour, size)
- *   - Frontend controls HOW to draw it (cartoon style, timing, animation)
- *   - Works for any Grade 6 science topic without code changes
- *   - Adding new topic = add actor types on backend + renderer in actorRenderers.ts
- *
- * BACKWARDS COMPATIBILITY
- * ────────────────────────
- * SCENE_RENDERERS is still imported as an optional override.
- * If concept contains "photo/chloro" AND a matching scene id exists,
- * the old photosynthesis cartoon takes priority.  Otherwise the new
- * actor-driven path runs.
- *
- * EXPO-2D-CONTEXT SAFE — no banned APIs in this file.
- */
+import { detectDomain, renderUniversalScene, type ConceptDomain } from "./sceneRenderers";
 
-import {
-  detectDomain,
-  renderUniversalScene,
-  type ConceptDomain,
-} from "./sceneRenderers";
-import { getSceneAtTime, normalizeAnimationScript } from "./runtime";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 export interface SceneActor {
   type: string;
-  x: number;
-  y: number;
+  x?: number;
+  y?: number;
   color?: string | null;
   size?: number;
   count?: number;
@@ -52,7 +12,7 @@ export interface SceneActor {
   length?: number;
   text?: string;
   fontSize?: number;
-  timeline?: { at: number; action: string; alpha?: number }[];
+  timeline?: { at: number; action?: string; alpha?: number }[];
   [key: string]: any;
 }
 
@@ -63,12 +23,7 @@ export interface Scene {
   text: string;
   actors: SceneActor[];
   environment?: string;
-  meta?: {
-    cognitiveState?: string;
-    tier?: string;
-    ctmlPrinciples?: string[];
-    salienceLevel?: string;
-  };
+  meta?: Record<string, any>;
 }
 
 export interface AnimationScript {
@@ -80,7 +35,6 @@ export interface AnimationScript {
 
 type Ctx = any;
 
-// ─── AnimationEngine ──────────────────────────────────────────────────────────
 export class AnimationEngine {
   private ctx: Ctx;
   private W: number;
@@ -92,14 +46,11 @@ export class AnimationEngine {
   private isPlaying = false;
   private lastTS: number | null = null;
   private rafId: any = null;
-
-  // Optional hook for platform-specific work after each frame
-  // (e.g. ctx.flush() + gl.endFrameEXP() on Expo GL).
   private postFrame?: () => void;
-
   private onSceneChange?: (idx: number, scene: Scene) => void;
   private onTimeUpdate?: (time: number) => void;
   private onComplete?: () => void;
+  private lastSceneIndex = -1;
 
   constructor(
     ctx: Ctx,
@@ -117,18 +68,30 @@ export class AnimationEngine {
     this.ctx = ctx;
     this.W = W;
     this.H = H;
-    this.script = normalizeAnimationScript(script as any) as unknown as AnimationScript;
+    this.script = script;
     this.concept = concept || script.concept || script.title || "";
     this.domain = detectDomain(this.concept, this.script.scenes);
-    if (callbacks) {
-      this.onSceneChange = callbacks.onSceneChange;
-      this.onTimeUpdate = callbacks.onTimeUpdate;
-      this.onComplete = callbacks.onComplete;
-      this.postFrame = callbacks.postFrame;
-    }
+    this.onSceneChange = callbacks?.onSceneChange;
+    this.onTimeUpdate = callbacks?.onTimeUpdate;
+    this.onComplete = callbacks?.onComplete;
+    this.postFrame = callbacks?.postFrame;
   }
 
-  // ── Playback ──────────────────────────────────────────────────────────────
+  setScript(script: AnimationScript, concept = "") {
+    this.script = script;
+    this.concept = concept || script.concept || script.title || "";
+    this.domain = detectDomain(this.concept, this.script.scenes);
+    this.currentTime = 0;
+    this.lastSceneIndex = -1;
+  }
+
+  setSize(W: number, H: number) {
+    if (!Number.isFinite(W) || !Number.isFinite(H) || W <= 0 || H <= 0) return;
+    this.W = W;
+    this.H = H;
+    this.draw();
+  }
+
   play() {
     if (this.isPlaying) return;
     this.isPlaying = true;
@@ -145,16 +108,9 @@ export class AnimationEngine {
   }
 
   seek(ms: number) {
-    this.currentTime = Math.max(0, Math.min(ms, this.script.duration));
+    this.currentTime = Math.max(0, Math.min(ms, this.script.duration || 0));
     this.renderFrame(this.currentTime);
     this.onTimeUpdate?.(this.currentTime);
-  }
-
-  setScript(nextScript: AnimationScript) {
-    this.script = normalizeAnimationScript(nextScript as any) as unknown as AnimationScript;
-    this.concept = this.script.concept || this.script.title || this.concept;
-    this.domain = detectDomain(this.concept, this.script.scenes);
-    this.reset();
   }
 
   seekToScene(idx: number) {
@@ -163,31 +119,23 @@ export class AnimationEngine {
   }
 
   reset() {
-    // When the script has been hot-swapped (e.g. Photosynthesis → Water Cycle),
-    // make sure we also re‑derive concept + domain so backgrounds/anchors update.
-    this.concept = this.script.concept || this.script.title || this.concept;
-    this.domain = detectDomain(this.concept, this.script.scenes);
-
     this.pause();
     this.currentTime = 0;
+    this.concept = this.script.concept || this.script.title || this.concept;
+    this.domain = detectDomain(this.concept, this.script.scenes);
+    this.lastSceneIndex = -1;
     this.renderFrame(0);
   }
+
   dispose() {
     this.pause();
   }
 
-  getCurrentTime() {
-    return this.currentTime;
-  }
-  getDuration() {
-    return this.script.duration;
-  }
-  getScenes() {
-    return this.script.scenes;
-  }
-  getIsPlaying() {
-    return this.isPlaying;
-  }
+  getCurrentTime() { return this.currentTime; }
+  getDuration() { return this.script.duration; }
+  getScenes() { return this.script.scenes; }
+  getIsPlaying() { return this.isPlaying; }
+
   getCurrentSceneIndex() {
     const t = this.currentTime;
     for (let i = this.script.scenes.length - 1; i >= 0; i--) {
@@ -196,20 +144,16 @@ export class AnimationEngine {
     return 0;
   }
 
-  // ── Loop ──────────────────────────────────────────────────────────────────
   private tick() {
     if (!this.isPlaying) return;
     this.rafId = requestAnimationFrame((ts: number) => {
       if (this.lastTS !== null) {
-        this.currentTime = Math.min(
-          this.currentTime + (ts - this.lastTS),
-          this.script.duration,
-        );
+        this.currentTime = Math.min(this.currentTime + (ts - this.lastTS), this.script.duration || 0);
       }
       this.lastTS = ts;
       this.renderFrame(this.currentTime);
       this.onTimeUpdate?.(this.currentTime);
-      if (this.currentTime >= this.script.duration) {
+      if (this.currentTime >= (this.script.duration || 0)) {
         this.isPlaying = false;
         this.onComplete?.();
         return;
@@ -218,44 +162,37 @@ export class AnimationEngine {
     });
   }
 
-  // ── Core render ───────────────────────────────────────────────────────────
   renderFrame(timeMs: number) {
     const { ctx, W, H, script, domain } = this;
-    if (!script.scenes || script.scenes.length === 0) {
+    const scenes = script.scenes || [];
+    if (!scenes.length) {
+      ctx.clearRect(0, 0, W, H);
       return;
     }
 
-    const { scene: currentScene, index: sceneIndex } = getSceneAtTime(
-      script as any,
-      timeMs,
-    ) as unknown as { scene: Scene; index: number };
+    let currentScene: Scene = scenes[0];
+    let sceneIndex = 0;
+    for (let i = scenes.length - 1; i >= 0; i--) {
+      if (timeMs >= scenes[i].startTime) {
+        currentScene = scenes[i];
+        sceneIndex = i;
+        break;
+      }
+    }
 
     const sceneElapsed = Math.max(0, timeMs - currentScene.startTime);
-    this.onSceneChange?.(sceneIndex, currentScene);
-
+    if (sceneIndex !== this.lastSceneIndex) {
+      this.lastSceneIndex = sceneIndex;
+      this.onSceneChange?.(sceneIndex, currentScene);
+    }
     ctx.clearRect(0, 0, W, H);
-
-    // Single universal renderer for all concepts/domains.
     renderUniversalScene(currentScene, domain, ctx, W, H, sceneElapsed);
-
-    // Allow platform-specific code (e.g. GL buffer swap) to run.
     this.postFrame?.();
   }
 
-  // Convenience: render current frame without advancing time (used on web)
   draw() {
     this.renderFrame(this.currentTime);
   }
-}
-
-function _pulseCenter(ctx: Ctx, W: number, H: number, e: number) {
-  ctx.save();
-  ctx.globalAlpha = 0.07 + Math.sin(e * 0.004) * 0.04;
-  ctx.fillStyle = "#FFFFFF";
-  ctx.beginPath();
-  ctx.arc(W / 2, H / 2, 38, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
 }
 
 export default AnimationEngine;

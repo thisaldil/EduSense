@@ -1,10 +1,10 @@
-import {
+﻿import {
   drawMicroscope,
   drawMicrobeBlob,
   drawWaterDrop,
   drawMagnifierCircle,
-} from "../core/shapes";
-import { fadeIn } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn } from "../../core/easing";
 
 type Ctx = any;
 

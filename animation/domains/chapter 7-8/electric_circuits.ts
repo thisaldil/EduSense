@@ -1,4 +1,4 @@
-/**
+﻿/**
  * domains/electric_circuits.ts
  */
 
@@ -10,8 +10,8 @@ import {
   drawGlowingBulb,
   drawSwitch,
   drawWirePath,
-} from "../core/shapes";
-import { fadeIn } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn } from "../../core/easing";
 
 type Ctx = any;
 
