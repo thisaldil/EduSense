@@ -173,7 +173,7 @@ export const clearStoredAuth = async (): Promise<void> => {
  */
 export const apiRequest = async <T = any>(
   endpoint: string,
-  options: RequestInit = {},
+  options: RequestInit & { suppress404?: boolean } = {},
 ): Promise<T> => {
   const token = await getStoredToken();
 
@@ -188,6 +188,7 @@ export const apiRequest = async <T = any>(
   }
 
   const url = `${API_BASE_URL}${endpoint}`;
+  const suppress404 = options.suppress404 === true;
 
   try {
     const response = await fetch(url, {
@@ -204,8 +205,16 @@ export const apiRequest = async <T = any>(
 
     if (!response.ok) {
       // In dev, log the full error response so you can see why the backend rejected the request
-      if (typeof __DEV__ !== "undefined" && __DEV__) {
-        console.warn(`[API] ${response.status} ${response.statusText}`, url, data);
+      if (
+        typeof __DEV__ !== "undefined" &&
+        __DEV__ &&
+        !(suppress404 && response.status === 404)
+      ) {
+        console.warn(
+          `[API] ${response.status} ${response.statusText}`,
+          url,
+          data,
+        );
       }
       // Clear auth only when an authenticated request gets 401 (expired/invalid token).
       // Do NOT clear on 401 from login/register – that just means wrong credentials.
@@ -237,11 +246,21 @@ export const apiRequest = async <T = any>(
   }
 };
 
+export interface ApiGetOptions {
+  suppress404?: boolean;
+}
+
 /**
  * GET request
  */
-export const apiGet = <T = any>(endpoint: string): Promise<T> => {
-  return apiRequest<T>(endpoint, { method: "GET" });
+export const apiGet = <T = any>(
+  endpoint: string,
+  options?: ApiGetOptions,
+): Promise<T> => {
+  return apiRequest<T>(endpoint, {
+    method: "GET",
+    ...(options?.suppress404 ? { suppress404: true } : {}),
+  });
 };
 
 /**
@@ -404,7 +423,10 @@ export namespace animationApi {
     const endpoint = `/api/animation/neuro-adaptive/latest?${search.toString()}`;
 
     try {
-      return await apiGet<NeuroAdaptiveAnimationResponse>(endpoint);
+      // 404 here just means "no cached script yet" – suppress logging.
+      return await apiGet<NeuroAdaptiveAnimationResponse>(endpoint, {
+        suppress404: true,
+      });
     } catch (err: any) {
       if (err?.status === 404) {
         return null;

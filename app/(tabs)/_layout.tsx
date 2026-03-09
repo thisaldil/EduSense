@@ -59,21 +59,7 @@ export default function TabLayout() {
           // Learning Theatre – core Transmutation hub
           title: "Learning Theatre",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={26} name="sparkles" color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="upload"
-        options={{
-          // Activities & Quizzes – validation loop
-          title: "Activities & Quizzes",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol
-              size={26}
-              name="rectangle.and.pencil.and.ellipsis"
-              color={color}
-            />
+            <IconSymbol size={26} name="books.vertical.fill" color={color} />
           ),
         }}
       />
