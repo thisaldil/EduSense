@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -12,14 +13,27 @@ import {
   TextInput,
   View,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
+
+import Voice, {
+  SpeechResultsEvent,
+  SpeechErrorEvent,
+} from "@react-native-voice/voice";
 
 import { Colors, Typography } from "@/constants/theme";
 import { createLesson } from "@/services/lessons";
+import { analyzeNoteImage } from "@/services/vision";
 
 const generateSessionId = () =>
   `${Date.now().toString(36)}-${Math.random().toString(16).slice(2)}`;
 
-function inferLessonMetaFromText(content: string): { title: string; subject: string } {
+const isWeb = Platform.OS === "web";
+let webRecognition: any | null = null;
+
+function inferLessonMetaFromText(content: string): {
+  title: string;
+  subject: string;
+} {
   const trimmed = content.trim();
   if (!trimmed) {
     return { title: "Lesson", subject: "General" };
@@ -55,11 +69,152 @@ function inferLessonMetaFromText(content: string): { title: string; subject: str
 export default function NewLessonScreen() {
   const [text, setText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
   const maxChars = 2000;
+
+  React.useEffect(() => {
+    if (isWeb) {
+      // Voice is not supported on web; we use Web Speech API instead.
+      return;
+    }
+
+    Voice.onSpeechStart = () => {
+      setIsRecording(true);
+    };
+
+    Voice.onSpeechResults = (event: SpeechResultsEvent) => {
+      const value = event.value?.[0] ?? "";
+      setText((prev) => (prev ? `${prev} ${value}` : value));
+    };
+
+    Voice.onSpeechEnd = () => {
+      setIsRecording(false);
+    };
+
+    Voice.onSpeechError = (_event: SpeechErrorEvent) => {
+      setIsRecording(false);
+    };
+
+    return () => {
+      Voice.destroy().then(Voice.removeAllListeners).catch(() => {});
+    };
+  }, []);
+
+  const startRecording = async () => {
+    if (isWeb) {
+      try {
+        const SpeechRecognition =
+          (window as any).SpeechRecognition ||
+          (window as any).webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+          Alert.alert(
+            "Speech not supported",
+            "Your browser does not support speech recognition.",
+          );
+          return;
+        }
+
+        webRecognition = new SpeechRecognition();
+        webRecognition.lang = "en-US";
+        webRecognition.continuous = false;
+        webRecognition.interimResults = false;
+        webRecognition.onresult = (event: any) => {
+          const value =
+            event.results?.[0]?.[0]?.transcript ??
+            event.results?.[0]?.[0]?.transcript;
+          if (!value) return;
+          setText((prev) => (prev ? `${prev} ${value}` : value));
+        };
+        webRecognition.onerror = () => {
+          setIsRecording(false);
+        };
+        webRecognition.onend = () => {
+          setIsRecording(false);
+        };
+
+        setIsRecording(true);
+        webRecognition.start();
+      } catch {
+        setIsRecording(false);
+      }
+      return;
+    }
+
+    try {
+      await Voice.start("en-US");
+    } catch {
+      setIsRecording(false);
+    }
+  };
+
+  const stopRecording = async () => {
+    if (isWeb) {
+      try {
+        if (webRecognition) {
+          webRecognition.stop();
+        }
+      } catch {
+        // ignore
+      } finally {
+        setIsRecording(false);
+      }
+      return;
+    }
+
+    try {
+      await Voice.stop();
+    } catch {
+      // ignore
+    } finally {
+      setIsRecording(false);
+    }
+  };
 
   const handlePaste = async () => {
     // Implement paste functionality
     // For now, just a placeholder
+  };
+
+  const handleScanNoteImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission required",
+          "Camera permission is required to scan a note.",
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 1,
+      });
+
+      if (result.canceled || !result.assets?.[0]?.uri) {
+        return;
+      }
+
+      const uri = result.assets[0].uri;
+      const extractedText = await analyzeNoteImage(uri);
+
+      if (!extractedText?.trim()) {
+        Alert.alert(
+          "No text found",
+          "We couldn't detect any text in this photo.",
+        );
+        return;
+      }
+
+      setText((prev) =>
+        prev ? `${prev.trim()}\n\n${extractedText.trim()}` : extractedText.trim(),
+      );
+    } catch (error: any) {
+      Alert.alert(
+        "Scan failed",
+        error?.message || "Unable to analyze the note image.",
+      );
+    }
   };
 
   const handleGenerate = async () => {
@@ -89,7 +244,7 @@ export default function NewLessonScreen() {
     } catch (error: any) {
       Alert.alert(
         "Error",
-        error.message || "Failed to create lesson. Please try again."
+        error.message || "Failed to create lesson. Please try again.",
       );
     } finally {
       setIsLoading(false);
@@ -151,10 +306,20 @@ export default function NewLessonScreen() {
                 <View style={styles.dotIndicator} />
                 <Text style={styles.inputHeaderText}>Lesson Text</Text>
               </View>
-              <Pressable style={styles.pasteButton} onPress={handlePaste}>
-                <Ionicons name="clipboard" size={16} color={Colors.deepBlue} />
-                <Text style={styles.pasteButtonText}>Paste</Text>
-              </Pressable>
+              <View style={styles.inputHeaderActions}>
+                <Pressable style={styles.pasteButton} onPress={handlePaste}>
+                  <Ionicons name="clipboard" size={16} color={Colors.deepBlue} />
+                  <Text style={styles.pasteButtonText}>Paste</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.scanButton}
+                  onPress={handleScanNoteImage}
+                  hitSlop={8}
+                >
+                  <Ionicons name="camera" size={16} color={Colors.deepBlue} />
+                  <Text style={styles.scanButtonText}>Scan note</Text>
+                </Pressable>
+              </View>
             </View>
 
             <TextInput
@@ -182,15 +347,41 @@ Example: 'Photosynthesis is how plants make their food using sunlight, water, an
                   {text.length} / {maxChars}
                 </Text>
               </View>
-              {text.length > 0 && (
-                <Pressable onPress={() => setText("")}>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+              >
+                {text.length > 0 && (
+                  <Pressable onPress={() => setText("")}>
+                    <Ionicons
+                      name="close-circle"
+                      size={20}
+                      color={Colors.light.textSecondary}
+                    />
+                  </Pressable>
+                )}
+                <Pressable
+                  style={[
+                    styles.micButton,
+                    isRecording && styles.micButtonActive,
+                  ]}
+                  onPress={isRecording ? stopRecording : startRecording}
+                  hitSlop={8}
+                >
                   <Ionicons
-                    name="close-circle"
-                    size={20}
-                    color={Colors.light.textSecondary}
+                    name={isRecording ? "mic-off" : "mic"}
+                    size={18}
+                    color={isRecording ? "#FFFFFF" : Colors.deepBlue}
                   />
+                  <Text
+                    style={[
+                      styles.micButtonText,
+                      isRecording && { color: "#FFFFFF" },
+                    ]}
+                  >
+                    {isRecording ? "Stop" : "Speak"}
+                  </Text>
                 </Pressable>
-              )}
+              </View>
             </View>
           </View>
         </View>
@@ -214,7 +405,7 @@ Example: 'Photosynthesis is how plants make their food using sunlight, water, an
           style={({ pressed }) => [
             styles.generateButton,
             { transform: [{ scale: pressed ? 0.98 : 1 }] },
-          (text.length === 0 || isLoading) && styles.generateButtonDisabled,
+            (text.length === 0 || isLoading) && styles.generateButtonDisabled,
           ]}
           onPress={handleGenerate}
           disabled={text.length === 0 || isLoading}
@@ -392,6 +583,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
+  inputHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   dotIndicator: {
     width: 8,
     height: 8,
@@ -416,6 +612,20 @@ const styles = StyleSheet.create({
     color: Colors.deepBlue,
     fontFamily: "Inter_600SemiBold",
   },
+  scanButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: `${Colors.teal}10`,
+  },
+  scanButtonText: {
+    ...Typography.small,
+    color: Colors.deepBlue,
+    fontFamily: "Inter_600SemiBold",
+  },
   textInput: {
     ...Typography.body,
     color: Colors.light.text,
@@ -435,6 +645,24 @@ const styles = StyleSheet.create({
   charCounterText: {
     ...Typography.small,
     color: Colors.light.textSecondary,
+  },
+
+  micButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: `${Colors.deepBlue}10`,
+  },
+  micButtonActive: {
+    backgroundColor: Colors.brightOrange,
+  },
+  micButtonText: {
+    ...Typography.small,
+    color: Colors.deepBlue,
+    fontFamily: "Inter_600SemiBold",
   },
 
   // Info Card

@@ -69,4 +69,5 @@ export const API_ENDPOINTS = {
   ANIMATION_NEURO_ADAPTIVE: "/api/animation/neuro-adaptive",
   SENSORY_OVERLAY: "/api/sensory/overlay",
   TTS_SYNTHESIZE: "/api/tts/synthesize",
+  VISION_NOTES_ANALYZE: "/api/vision/notes/analyze",
 } as const;
