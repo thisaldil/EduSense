@@ -1,4 +1,4 @@
-import {
+﻿import {
   C,
   drawBolt,
   drawCloud,
@@ -9,8 +9,8 @@ import {
   drawSunny,
   drawWaterDrop,
   drawO2,
-} from "../core/shapes";
-import { clamp01, easeOut, fadeIn, lerp } from "../core/easing";
+} from "../../core/shapes";
+import { clamp01, easeOut, fadeIn, lerp } from "../../core/easing";
 
 type Ctx = any;
 

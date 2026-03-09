@@ -1,12 +1,12 @@
-import {
+﻿import {
   drawIceCube,
   drawWaterDrop,
   drawSteamPuff,
   drawHeatArrow,
   drawStateArrow,
   drawThermometer,
-} from "../core/shapes";
-import { fadeIn } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn } from "../../core/easing";
 
 type Ctx = any;
 

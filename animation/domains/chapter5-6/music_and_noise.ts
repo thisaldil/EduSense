@@ -1,11 +1,11 @@
-import {
+﻿import {
   drawMusicNote,
   drawNoiseBurst,
   drawRhythmBars,
   drawCrossMark,
   drawTick,
-} from "../core/shapes";
-import { fadeIn } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn } from "../../core/easing";
 
 type Ctx = any;
 

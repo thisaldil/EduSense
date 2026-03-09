@@ -1,4 +1,4 @@
-import {
+﻿import {
   C,
   drawThermometer,
   drawFlame,
@@ -6,8 +6,8 @@ import {
   drawSol,
   drawCloud,
   drawLabelChip,
-} from "../core/shapes";
-import { fadeIn } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn } from "../../core/easing";
 
 type Ctx = any;
 
@@ -43,7 +43,7 @@ export function drawAnchorCharacters(ctx: Ctx, W: number, H: number, t: number):
   drawThermometer(ctx, W * 0.52, H * 0.56, 1.25, 1, temp);
   drawFlame(ctx, W * 0.26, H * 0.7, 1.0, 1, t);
   drawHeatWaves(ctx, W * 0.26, H * 0.54, 48, 1, t);
-  drawLabelChip(ctx, W * 0.7, H * 0.26, "°C", 1);
+  drawLabelChip(ctx, W * 0.7, H * 0.26, "Â°C", 1);
 }
 
 export function keywordFallback(

@@ -1,12 +1,12 @@
-import {
+﻿import {
   drawPlant,
   drawSeedling,
   drawSeed,
   drawEgg,
   drawArrowLine,
   drawCloud,
-} from "../core/shapes";
-import { fadeIn } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn } from "../../core/easing";
 
 type Ctx = any;
 

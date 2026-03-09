@@ -1,4 +1,4 @@
-/**
+﻿/**
  * domains/water_conservation.ts
  */
 
@@ -8,8 +8,8 @@ import {
   drawPlant,
   drawTapOff,
   drawWaterDrop,
-} from "../core/shapes";
-import { fadeIn, lerp } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn, lerp } from "../../core/easing";
 
 type Ctx = any;
 

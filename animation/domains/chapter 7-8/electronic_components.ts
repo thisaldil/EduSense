@@ -1,4 +1,4 @@
-/**
+﻿/**
  * domains/electronic_components.ts
  */
 
@@ -10,8 +10,8 @@ import {
   drawLEDSymbol,
   drawResistorSymbol,
   drawSwitch,
-} from "../core/shapes";
-import { fadeIn } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn } from "../../core/easing";
 
 type Ctx = any;
 

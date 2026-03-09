@@ -1,12 +1,12 @@
-import {
+﻿import {
   drawGrassClump,
   drawDeer,
   drawLion,
   drawArrowLine,
   drawFoodBowl,
   drawCloud,
-} from "../core/shapes";
-import { fadeIn } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn } from "../../core/easing";
 
 type Ctx = any;
 

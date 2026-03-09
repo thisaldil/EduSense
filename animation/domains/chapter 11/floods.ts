@@ -1,12 +1,12 @@
-import {
+﻿import {
   drawRainCloud,
   drawRiverBank,
   drawFloodHouse,
   drawWaterWave,
   drawOverflowArrow,
   drawWarningTriangle,
-} from "../core/shapes";
-import { fadeIn, clamp01, lerp } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn, clamp01, lerp } from "../../core/easing";
 
 type Ctx = any;
 

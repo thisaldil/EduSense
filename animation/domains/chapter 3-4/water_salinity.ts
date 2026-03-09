@@ -1,4 +1,4 @@
-/**
+﻿/**
  * domains/water_salinity.ts
  */
 
@@ -7,8 +7,8 @@ import {
   drawSalinityGauge,
   drawWaterDrop,
   drawWave,
-} from "../core/shapes";
-import { fadeIn } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn } from "../../core/easing";
 
 type Ctx = any;
 

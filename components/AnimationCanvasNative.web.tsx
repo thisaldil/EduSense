@@ -1,106 +1,117 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 
-import { AnimationEngine } from "@/visual";
-import { exampleUsage } from "@/animation/scriptGenerator";
-import { normalizeAnimationScript } from "@/animation/runtime";
+import { normalizeScript } from "../animation/scriptNormalizer";
+import { AnimationEngine } from "../visual";
 
 type Props = {
-  /** Whether the animation should currently be playing */
   isPlaying: boolean;
-  /** Engine-ready script from backend. Falls back to exampleUsage() if not provided. */
   script?: any | null;
-  /** External playback position in milliseconds. */
   currentTimeMs?: number;
 };
 
-/**
- * Web-specific implementation of the animation canvas.
- * Uses a regular HTML <canvas> and the same AnimationEngine as the original React web app.
- */
+type Size = { width: number; height: number };
+
+function getCanvasSize(host: HTMLDivElement | null): Size {
+  if (!host) return { width: 800, height: 600 };
+  const rect = host.getBoundingClientRect();
+  return {
+    width: Math.max(320, Math.round(rect.width || 800)),
+    height: Math.max(220, Math.round(rect.height || 600)),
+  };
+}
+
 export function AnimationCanvasNative({ isPlaying, script, currentTimeMs }: Props) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<AnimationEngine | null>(null);
-  const scriptRef = useRef<any>(
-    normalizeAnimationScript(script ?? (exampleUsage() as any)),
+
+  const normalizedScript = useMemo(
+    () => (script ? normalizeScript(script) : null),
+    [script],
   );
 
-  // Keep scriptRef in sync with latest prop
-  useEffect(() => {
-    if (script) {
-      scriptRef.current = normalizeAnimationScript(script);
-    }
-  }, [script]);
-
-  // Initialize engine once when the canvas is ready
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const host = hostRef.current;
+    if (!canvas || !host) return;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const engine = new AnimationEngine(
-      ctx as any,
-      canvas.width || 800,
-      canvas.height || 600,
-      scriptRef.current,
-    );
-    engineRef.current = engine;
-    engine.draw?.();
+    const resizeCanvas = () => {
+      const { width, height } = getCanvasSize(host);
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      engineRef.current?.setSize(width, height);
+    };
+
+    resizeCanvas();
+
+    const observer = new ResizeObserver(() => resizeCanvas());
+    observer.observe(host);
 
     return () => {
-      engine.pause?.();
+      observer.disconnect();
     };
   }, []);
 
-  // Play / pause based on prop
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !normalizedScript) {
+      engineRef.current?.dispose();
+      engineRef.current = null;
+      return;
+    }
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const host = hostRef.current;
+    const { width, height } = getCanvasSize(host);
+
+    engineRef.current?.dispose();
+    const engine = new AnimationEngine(
+      ctx as any,
+      width,
+      height,
+      normalizedScript as any,
+      normalizedScript.concept || normalizedScript.title || "",
+    );
+    engineRef.current = engine;
+    engine.seek(currentTimeMs ?? 0);
+
+    if (isPlaying) engine.play();
+    else engine.draw();
+
+    return () => {
+      engine.dispose();
+    };
+  }, [normalizedScript]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     const engine = engineRef.current;
     if (!engine) return;
-    if (isPlaying) {
-      engine.play();
-    } else {
-      engine.pause();
-    }
+    if (isPlaying) engine.play();
+    else engine.pause();
   }, [isPlaying]);
 
-  // Keep canvas aligned with external timeline (scene jumps/reset/seek).
   useEffect(() => {
     if (currentTimeMs == null) return;
     const engine = engineRef.current;
     if (!engine) return;
-    engine.seek?.(currentTimeMs);
+    engine.seek(currentTimeMs);
   }, [currentTimeMs]);
-
-  // When a NEW script arrives, swap it into the existing engine and reset playback.
-  useEffect(() => {
-    if (!script) return;
-    const engine = engineRef.current;
-    scriptRef.current = script;
-    if (!engine) return;
-
-    engine.setScript?.(normalizeAnimationScript(script) as any);
-    (engine as any).currentTime = 0;
-
-    if (isPlaying) {
-      engine.play();
-    } else {
-      engine.draw?.();
-    }
-  }, [script, isPlaying]);
 
   return (
     <View style={styles.container}>
-      <canvas
-        ref={canvasRef}
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "block",
-          background: "linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%)",
-        }}
-      />
+      <div ref={hostRef as any} style={styles.host as any}>
+        <canvas ref={canvasRef} style={styles.canvas as any} />
+      </div>
     </View>
   );
 }
@@ -108,8 +119,18 @@ export function AnimationCanvasNative({ isPlaying, script, currentTimeMs }: Prop
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    borderRadius: 24,
+    borderRadius: 20,
     overflow: "hidden",
-    backgroundColor: "#000000",
+    backgroundColor: "#0F172A",
+  },
+  host: {
+    width: "100%",
+    height: "100%",
+    position: "relative",
+  },
+  canvas: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#0F172A",
   },
 });

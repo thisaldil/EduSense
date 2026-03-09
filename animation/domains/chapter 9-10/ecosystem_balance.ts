@@ -1,4 +1,4 @@
-import {
+﻿import {
   drawBalanceScale,
   drawPlant,
   drawRabbit,
@@ -6,8 +6,8 @@ import {
   drawFox,
   drawWebLine,
   drawBrokenScaleMark,
-} from "../core/shapes";
-import { fadeIn } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn } from "../../core/easing";
 
 type Ctx = any;
 

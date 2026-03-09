@@ -1,4 +1,4 @@
-/**
+﻿/**
  * domains/water_sources_availability.ts
  */
 
@@ -9,8 +9,8 @@ import {
   drawWaterDrop,
   drawWave,
   drawWell,
-} from "../core/shapes";
-import { fadeIn } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn } from "../../core/easing";
 
 type Ctx = any;
 
