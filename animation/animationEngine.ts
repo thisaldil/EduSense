@@ -37,6 +37,7 @@ import {
   renderUniversalScene,
   type ConceptDomain,
 } from "./sceneRenderers";
+import { getSceneAtTime, normalizeAnimationScript } from "./runtime";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface SceneActor {
@@ -116,7 +117,7 @@ export class AnimationEngine {
     this.ctx = ctx;
     this.W = W;
     this.H = H;
-    this.script = script;
+    this.script = normalizeAnimationScript(script as any) as unknown as AnimationScript;
     this.concept = concept || script.concept || script.title || "";
     this.domain = detectDomain(this.concept, this.script.scenes);
     if (callbacks) {
@@ -147,6 +148,13 @@ export class AnimationEngine {
     this.currentTime = Math.max(0, Math.min(ms, this.script.duration));
     this.renderFrame(this.currentTime);
     this.onTimeUpdate?.(this.currentTime);
+  }
+
+  setScript(nextScript: AnimationScript) {
+    this.script = normalizeAnimationScript(nextScript as any) as unknown as AnimationScript;
+    this.concept = this.script.concept || this.script.title || this.concept;
+    this.domain = detectDomain(this.concept, this.script.scenes);
+    this.reset();
   }
 
   seekToScene(idx: number) {
@@ -213,18 +221,14 @@ export class AnimationEngine {
   // ── Core render ───────────────────────────────────────────────────────────
   renderFrame(timeMs: number) {
     const { ctx, W, H, script, domain } = this;
-    const scenes = script.scenes;
-
-    // Find current scene
-    let currentScene: Scene = scenes[0];
-    let sceneIndex = 0;
-    for (let i = scenes.length - 1; i >= 0; i--) {
-      if (timeMs >= scenes[i].startTime) {
-        currentScene = scenes[i];
-        sceneIndex = i;
-        break;
-      }
+    if (!script.scenes || script.scenes.length === 0) {
+      return;
     }
+
+    const { scene: currentScene, index: sceneIndex } = getSceneAtTime(
+      script as any,
+      timeMs,
+    ) as unknown as { scene: Scene; index: number };
 
     const sceneElapsed = Math.max(0, timeMs - currentScene.startTime);
     this.onSceneChange?.(sceneIndex, currentScene);

@@ -1,14 +1,13 @@
 /**
- * actorRenderers.ts — Maps actor.type → draw function.
- * Replaces the previous inline switch in sceneRenderers; single place to add new types.
+ * actorRenderers.ts - actor registry + timeline-driven runtime rendering.
  */
 
 import {
   C,
   drawArrow,
   drawBolt,
-  drawCloud,
   drawCO2,
+  drawCloud,
   drawConceptPill,
   drawGlucose,
   drawPlanet,
@@ -17,210 +16,273 @@ import {
   drawSunny,
   drawWaterDrop,
 } from "./core/shapes";
-import { computeTimelineAlpha, fadeIn } from "./core/easing";
+import { fadeIn } from "./core/easing";
+import { animationWarn } from "./runtime/debug";
+import { resolveActorState } from "./runtime/timelineEngine";
 
 type Ctx = any;
+
+type RuntimeState = {
+  x: number;
+  y: number;
+  alpha: number;
+  scale: number;
+  rotation: number;
+  visible: boolean;
+};
 
 export type DrawFn = (
   ctx: Ctx,
   actor: any,
-  alpha: number,
+  state: RuntimeState,
   t: number,
   W: number,
   H: number,
 ) => void;
 
-function drawLabelByText(
-  ctx: Ctx,
-  actor: any,
-  alpha: number,
-  t: number,
-  W: number,
-  H: number,
-): void {
-  if (alpha <= 0) return;
-  const text = (actor.text || "").replace(/\s/g, "");
-  const cx = actor.x ?? 400;
-  const cy = actor.y ?? 300;
-  const r = Math.max(18, (actor.fontSize || 16) * 1.15);
-  const color = actor.color || C.arrowDef;
+function drawTextLabel(ctx: Ctx, actor: any, state: RuntimeState) {
+  if (!state.visible || state.alpha <= 0) return;
 
-  if (/h₂o|h2o|water/i.test(text)) {
-    drawWaterDrop(ctx, cx, cy, r, alpha, actor.color || C.water);
+  const text = String(actor.text || "Concept");
+  const color = actor.color || "#0F172A";
+  const fontSize = Math.max(12, actor.fontSize || 18);
+  const width = Math.min(680, Math.max(180, text.length * fontSize * 0.62));
+  const height = fontSize + 18;
+
+  ctx.save();
+  ctx.translate(state.x, state.y);
+  ctx.rotate(state.rotation);
+  ctx.scale(state.scale, state.scale);
+  ctx.globalAlpha = state.alpha;
+
+  ctx.fillStyle = "rgba(255,255,255,0.92)";
+  ctx.strokeStyle = "rgba(15,23,42,0.16)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  if (typeof ctx.roundRect === "function") {
+    ctx.roundRect(-width / 2, -height / 2, width, height, 12);
+  } else {
+    ctx.rect(-width / 2, -height / 2, width, height);
+  }
+  ctx.fill();
+  ctx.stroke();
+
+  if (typeof ctx.fillText === "function") {
+    ctx.fillStyle = color;
+    ctx.font = `700 ${fontSize}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, 0, 0);
+  } else {
+    drawConceptPill(ctx, 0, 0, 1, color);
+  }
+
+  ctx.restore();
+}
+
+function drawLabelByText(ctx: Ctx, actor: any, state: RuntimeState, t: number) {
+  if (!state.visible || state.alpha <= 0) return;
+  const text = String(actor.text || "").replace(/\s/g, "");
+  const cx = state.x;
+  const cy = state.y;
+  const r = Math.max(18, (actor.fontSize || 16) * 1.15);
+
+  if (/h2o|water/i.test(text)) {
+    drawWaterDrop(ctx, cx, cy, r * state.scale, state.alpha, actor.color || C.water);
     return;
   }
-  if (/co₂|co2|carbondioxide|dioxide/i.test(text)) {
-    drawCO2(ctx, cx, cy, r * 1.3, alpha);
+  if (/co2|carbondioxide|dioxide/i.test(text)) {
+    drawCO2(ctx, cx, cy, r * 1.3 * state.scale, state.alpha);
     return;
   }
-  if (/c₆h₁₂o₆|glucose|sugar/i.test(text)) {
-    drawGlucose(ctx, cx, cy, r, alpha, t, actor.color || C.hexFill);
+  if (/c6h12o6|glucose|sugar/i.test(text)) {
+    drawGlucose(ctx, cx, cy, r * state.scale, state.alpha, t, actor.color || C.hexFill);
     return;
   }
   if (/energy|bolt|lightning/i.test(text)) {
-    drawBolt(ctx, cx, cy, r * 0.9, alpha, actor.color || C.bolt);
+    drawBolt(ctx, cx, cy, r * 0.9 * state.scale, state.alpha, actor.color || C.bolt);
     return;
   }
-  drawConceptPill(ctx, cx, cy, alpha, color);
+
+  drawTextLabel(ctx, actor, state);
 }
 
 export const ACTOR_RENDERERS: Record<string, DrawFn> = {
-  arrow: (ctx, actor, alpha, _t, _W, _H) =>
+  arrow: (ctx, actor, state) =>
     drawArrow(
       ctx,
-      actor.x ?? 400,
-      actor.y ?? 300,
-      actor.angle ?? 0,
-      actor.length ?? 120,
+      state.x,
+      state.y,
+      (actor.angle ?? 0) + state.rotation,
+      (actor.length ?? 120) * state.scale,
       actor.color || C.arrowDef,
       actor.thickness ?? 3,
-      alpha,
+      state.alpha,
     ),
-  glucose: (ctx, actor, alpha, t, _W, _H) =>
+  glucose: (ctx, actor, state, t) =>
     drawGlucose(
       ctx,
-      actor.x ?? 400,
-      actor.y ?? 300,
-      (actor.size ?? 40) * 0.85,
-      alpha,
+      state.x,
+      state.y,
+      (actor.size ?? 40) * 0.85 * state.scale,
+      state.alpha,
       t,
       actor.color || C.hexFill,
     ),
-  water: (ctx, actor, alpha, _t, _W, _H) =>
+  water: (ctx, actor, state) =>
     drawWaterDrop(
       ctx,
-      actor.x ?? 400,
-      actor.y ?? 300,
-      (actor.size ?? 36) * 0.5,
-      alpha,
+      state.x,
+      state.y,
+      (actor.size ?? 36) * 0.5 * state.scale,
+      state.alpha,
       actor.color || C.water,
     ),
-  co2: (ctx, actor, alpha, _t, _W, _H) =>
-    drawCO2(
+  waterdrop: (ctx, actor, state) =>
+    drawWaterDrop(
       ctx,
-      actor.x ?? 400,
-      actor.y ?? 300,
-      (actor.size ?? 36) * 0.5,
-      alpha,
+      state.x,
+      state.y,
+      (actor.size ?? 36) * 0.5 * state.scale,
+      state.alpha,
+      actor.color || C.water,
     ),
-  bolt: (ctx, actor, alpha, _t, _W, _H) =>
+  co2: (ctx, actor, state) =>
+    drawCO2(ctx, state.x, state.y, (actor.size ?? 36) * 0.5 * state.scale, state.alpha),
+  molecule: (ctx, actor, state, t) => {
+    const kind = String(actor.moleculeType || actor.extra?.moleculeType || "")
+      .trim()
+      .toLowerCase();
+    if (kind === "water" || kind === "h2o") {
+      drawWaterDrop(
+        ctx,
+        state.x,
+        state.y,
+        (actor.size ?? 36) * 0.5 * state.scale,
+        state.alpha,
+        actor.color || C.water,
+      );
+      return;
+    }
+    if (kind === "co2") {
+      drawCO2(ctx, state.x, state.y, (actor.size ?? 36) * 0.5 * state.scale, state.alpha);
+      return;
+    }
+    drawGlucose(
+      ctx,
+      state.x,
+      state.y,
+      (actor.size ?? 40) * 0.65 * state.scale,
+      state.alpha,
+      t,
+      actor.color || C.hexFill,
+    );
+  },
+  bolt: (ctx, actor, state) =>
     drawBolt(
       ctx,
-      actor.x ?? 400,
-      actor.y ?? 300,
-      (actor.size ?? 36) * 0.5,
-      alpha,
+      state.x,
+      state.y,
+      (actor.size ?? 36) * 0.5 * state.scale,
+      state.alpha,
       actor.color || C.bolt,
     ),
-  energy: (ctx, actor, alpha, _t, _W, _H) =>
+  energy: (ctx, actor, state) =>
     drawBolt(
       ctx,
-      actor.x ?? 400,
-      actor.y ?? 300,
-      (actor.size ?? 36) * 0.5,
-      alpha,
+      state.x,
+      state.y,
+      (actor.size ?? 36) * 0.5 * state.scale,
+      state.alpha,
       actor.color || C.bolt,
     ),
-  rock: (ctx, actor, alpha, _t, _W, _H) =>
+  rock: (ctx, actor, state) =>
     drawRock(
       ctx,
-      actor.x ?? 400,
-      actor.y ?? 300,
-      (actor.size ?? 40) * 0.5,
-      alpha,
+      state.x,
+      state.y,
+      (actor.size ?? 40) * 0.5 * state.scale,
+      state.alpha,
       actor.color || C.rockMid,
     ),
-  planet: (ctx, actor, alpha, _t, _W, _H) =>
+  planet: (ctx, actor, state) =>
     drawPlanet(
       ctx,
-      actor.x ?? 400,
-      actor.y ?? 300,
-      actor.size ?? 40,
-      alpha,
+      state.x,
+      state.y,
+      (actor.size ?? 40) * state.scale,
+      state.alpha,
       actor.color || "#42A5F5",
     ),
-  earth: (ctx, actor, alpha, _t, _W, _H) =>
+  earth: (ctx, actor, state) =>
     drawPlanet(
       ctx,
-      actor.x ?? 400,
-      actor.y ?? 300,
-      actor.size ?? 40,
-      alpha,
+      state.x,
+      state.y,
+      (actor.size ?? 40) * state.scale,
+      state.alpha,
       actor.color || "#4CAF50",
     ),
-  cloud: (ctx, actor, alpha, _t, _W, _H) =>
+  cloud: (ctx, actor, state) =>
     drawCloud(
       ctx,
-      actor.x ?? 300,
-      actor.y ?? 100,
-      (actor.size ?? 40) / 30,
-      alpha,
+      state.x,
+      state.y,
+      ((actor.size ?? 40) / 30) * state.scale,
+      state.alpha,
     ),
-  leaf: (ctx, actor, alpha, t, W, H) =>
-    drawSunny(
-      ctx,
-      actor.x ?? W * 0.28,
-      actor.y ?? H * 0.65,
-      t,
-      false,
-      1,
-      alpha,
-    ),
-  plant: (ctx, actor, alpha, t, W, H) =>
-    drawSunny(
-      ctx,
-      actor.x ?? W * 0.28,
-      actor.y ?? H * 0.65,
-      t,
-      false,
-      1,
-      alpha,
-    ),
-  sun: (ctx, actor, alpha, t, _W, _H) =>
-    drawSol(
-      ctx,
-      actor.x ?? 400,
-      actor.y ?? 300,
-      actor.size ?? 52,
-      t,
-      alpha,
-    ),
-  star: (ctx, actor, alpha, t, _W, _H) =>
-    drawSol(
-      ctx,
-      actor.x ?? 400,
-      actor.y ?? 300,
-      actor.size ?? 52,
-      t,
-      alpha,
-    ),
-  label: (ctx, actor, alpha, t, W, H) =>
-    drawLabelByText(ctx, actor, alpha, t, W, H),
+  leaf: (ctx, actor, state, t, W, H) =>
+    drawSunny(ctx, state.x ?? W * 0.28, state.y ?? H * 0.65, t, false, state.scale, state.alpha),
+  plant: (ctx, actor, state, t, W, H) =>
+    drawSunny(ctx, state.x ?? W * 0.28, state.y ?? H * 0.65, t, false, state.scale, state.alpha),
+  sun: (ctx, actor, state, t) =>
+    drawSol(ctx, state.x, state.y, (actor.size ?? 52) * state.scale, t, state.alpha),
+  star: (ctx, actor, state, t) =>
+    drawSol(ctx, state.x, state.y, (actor.size ?? 52) * state.scale, t, state.alpha),
+  label: (ctx, actor, state, t) => drawLabelByText(ctx, actor, state, t),
 };
 
-/**
- * Default renderer for unknown actor types — concept pill.
- */
 export function drawUnknownActor(
   ctx: Ctx,
   actor: any,
-  alpha: number,
+  state: RuntimeState,
   _t: number,
-  W: number,
-  H: number,
-): void {
-  drawConceptPill(
-    ctx,
-    actor.x ?? 400,
-    actor.y ?? 300,
-    alpha,
-    actor.color || C.arrowDef,
-  );
+) {
+  if (!state.visible || state.alpha <= 0) return;
+
+  ctx.save();
+  ctx.globalAlpha = state.alpha;
+  ctx.translate(state.x, state.y);
+  ctx.rotate(state.rotation);
+  ctx.scale(state.scale, state.scale);
+
+  ctx.fillStyle = "rgba(255,255,255,0.94)";
+  ctx.strokeStyle = "rgba(15,23,42,0.2)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  if (typeof ctx.roundRect === "function") {
+    ctx.roundRect(-72, -24, 144, 48, 10);
+  } else {
+    ctx.rect(-72, -24, 144, 48);
+  }
+  ctx.fill();
+  ctx.stroke();
+
+  if (typeof ctx.fillText === "function") {
+    ctx.fillStyle = actor.color || C.arrowDef;
+    ctx.font = "700 12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(actor.type || "actor").toUpperCase(), 0, 0);
+  } else {
+    drawConceptPill(ctx, 0, 0, 1, actor.color || C.arrowDef);
+  }
+
+  ctx.restore();
 }
 
 /**
- * Process backend actors: skip black labels, apply stagger + timeline alpha,
- * dispatch to ACTOR_RENDERERS. Returns the number of visual actors drawn.
+ * Process backend actors and render using the registry.
  */
 export function renderActors(
   actors: any[],
@@ -233,24 +295,26 @@ export function renderActors(
   let visualActors = 0;
 
   for (const actor of actors || []) {
-    const type = (actor.type || "label").toLowerCase();
-    const color = (actor.color || "").toUpperCase();
-
-    if (
-      type === "label" &&
-      (color === "#000000" || color === "#000" || !actor.color)
-    )
-      continue;
-
-    const delay = visualActors * 400;
-    const baseAlpha = fadeIn(elapsed, delay, 600);
-    visualActors++;
-
-    const alpha = computeTimelineAlpha(actor, elapsed, baseAlpha);
-    if (alpha <= 0) continue;
-
+    const type = String(actor?.type || "label").toLowerCase();
     const draw = ACTOR_RENDERERS[type] ?? drawUnknownActor;
-    draw(ctx, actor, alpha, t, W, H);
+
+    const timelineState = resolveActorState(actor, elapsed, visualActors);
+    const enterAlpha = fadeIn(elapsed, visualActors * 110, 500);
+    const state = {
+      ...timelineState,
+      alpha: Math.max(0, Math.min(1, timelineState.alpha * enterAlpha)),
+    };
+
+    if (!ACTOR_RENDERERS[type]) {
+      animationWarn("actors", "Unsupported actor.type. Rendering fallback.", {
+        type,
+      });
+    }
+
+    if (state.visible && state.alpha > 0.001) {
+      draw(ctx, actor, state, t, W, H);
+    }
+    visualActors++;
   }
 
   return visualActors;
