@@ -207,8 +207,10 @@ export const apiRequest = async <T = any>(
       if (typeof __DEV__ !== "undefined" && __DEV__) {
         console.warn(`[API] ${response.status} ${response.statusText}`, url, data);
       }
-      // Backend rejected the token (expired, invalid, etc.) – clear auth so user can sign in again
-      if (response.status === 401) {
+      // Clear auth only when an authenticated request gets 401 (expired/invalid token).
+      // Do NOT clear on 401 from login/register – that just means wrong credentials.
+      const isAuthEndpoint = url.includes("/api/auth/login") || url.includes("/api/auth/register");
+      if (response.status === 401 && !isAuthEndpoint) {
         await clearStoredAuth();
       }
       // FastAPI: detail can be string or array of { loc, msg }; 400/422 often carry validation info

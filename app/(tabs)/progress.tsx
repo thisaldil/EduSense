@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React from "react";
+import React, { useMemo } from "react";
 import {
   Pressable,
   SafeAreaView,
@@ -10,41 +10,52 @@ import {
   View,
 } from "react-native";
 
-import { Colors, Typography } from "@/constants/theme";
+import { type CognitiveTheme, Typography } from "@/constants/theme";
+import { useCognitiveTheme } from "@/hooks/use-cognitive-theme";
 
 const WEEKLY_ACTIVITY = [2, 4, 3, 5, 1, 4, 6]; // example sessions per day
-const SUBJECT_PROGRESS = [
-  { label: "Physics", value: 0.72, color: Colors.deepBlue },
-  { label: "Chemistry", value: 0.54, color: Colors.brightOrange },
-  { label: "Biology", value: 0.63, color: Colors.teal },
-  { label: "Math", value: 0.41, color: "#8B5CF6" },
-];
-
-const ACHIEVEMENTS = [
-  {
-    id: "1",
-    title: "5-Day Streak",
-    description: "You stayed consistent for 5 days in a row.",
-    icon: "flame",
-    color: "#F97316",
-  },
-  {
-    id: "2",
-    title: "Concept Master",
-    description: "10 concepts mastered with multisensory drills.",
-    icon: "ribbon",
-    color: Colors.deepBlue,
-  },
-  {
-    id: "3",
-    title: "Focused Learner",
-    description: "60+ minutes of focused learning this week.",
-    icon: "timer",
-    color: Colors.teal,
-  },
-];
 
 export default function ProgressScreen() {
+  const { theme: cognitiveTheme } = useCognitiveTheme();
+  const styles = useMemo(() => createStyles(cognitiveTheme), [cognitiveTheme]);
+
+  const subjectProgress = useMemo(
+    () => [
+      { label: "Physics", value: 0.72, color: cognitiveTheme.brand.primary },
+      { label: "Chemistry", value: 0.54, color: cognitiveTheme.brand.accent },
+      { label: "Biology", value: 0.63, color: cognitiveTheme.brand.secondary },
+      { label: "Math", value: 0.41, color: "#8B5CF6" },
+    ],
+    [cognitiveTheme],
+  );
+
+  const achievements = useMemo(
+    () => [
+      {
+        id: "1",
+        title: "5-Day Streak",
+        description: "You stayed consistent for 5 days in a row.",
+        icon: "flame",
+        color: "#F97316",
+      },
+      {
+        id: "2",
+        title: "Concept Master",
+        description: "10 concepts mastered with multisensory drills.",
+        icon: "ribbon",
+        color: cognitiveTheme.brand.primary,
+      },
+      {
+        id: "3",
+        title: "Focused Learner",
+        description: "60+ minutes of focused learning this week.",
+        icon: "timer",
+        color: cognitiveTheme.brand.secondary,
+      },
+    ],
+    [cognitiveTheme],
+  );
+
   const totalLessons = 28;
   const totalMinutes = 420;
   const conceptsMastered = 16;
@@ -71,7 +82,7 @@ export default function ProgressScreen() {
             <Ionicons
               name="settings-outline"
               size={22}
-              color={Colors.deepBlue}
+              color={cognitiveTheme.brand.primary}
             />
           </Pressable>
         </View>
@@ -109,7 +120,7 @@ export default function ProgressScreen() {
                 <View
                   style={[
                     styles.circleDot,
-                    { backgroundColor: Colors.deepBlue },
+                    { backgroundColor: cognitiveTheme.brand.primary },
                   ]}
                 />
                 <View>
@@ -121,7 +132,10 @@ export default function ProgressScreen() {
               </View>
               <View style={styles.circleStat}>
                 <View
-                  style={[styles.circleDot, { backgroundColor: Colors.teal }]}
+                  style={[
+                    styles.circleDot,
+                    { backgroundColor: cognitiveTheme.brand.secondary },
+                  ]}
                 />
                 <View>
                   <Text style={styles.circleStatLabel}>Concepts</Text>
@@ -185,7 +199,7 @@ export default function ProgressScreen() {
                 <View
                   style={[
                     styles.legendDot,
-                    { backgroundColor: Colors.deepBlue },
+                    { backgroundColor: cognitiveTheme.brand.primary },
                   ]}
                 />
                 <Text style={styles.legendLabel}>Visual · 40%</Text>
@@ -194,14 +208,17 @@ export default function ProgressScreen() {
                 <View
                   style={[
                     styles.legendDot,
-                    { backgroundColor: Colors.brightOrange },
+                    { backgroundColor: cognitiveTheme.brand.accent },
                   ]}
                 />
                 <Text style={styles.legendLabel}>Audio · 35%</Text>
               </View>
               <View style={styles.breakdownLegendItem}>
                 <View
-                  style={[styles.legendDot, { backgroundColor: Colors.teal }]}
+                  style={[
+                    styles.legendDot,
+                    { backgroundColor: cognitiveTheme.brand.secondary },
+                  ]}
                 />
                 <Text style={styles.legendLabel}>Haptic · 25%</Text>
               </View>
@@ -222,7 +239,7 @@ export default function ProgressScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.achievementsRow}
           >
-            {ACHIEVEMENTS.map((badge) => (
+            {achievements.map((badge) => (
               <View key={badge.id} style={styles.badgeCard}>
                 <View
                   style={[
@@ -249,7 +266,7 @@ export default function ProgressScreen() {
             <Text style={styles.sectionTitle}>Subjects progress</Text>
           </View>
           <View style={styles.subjectsList}>
-            {SUBJECT_PROGRESS.map((subject) => (
+            {subjectProgress.map((subject) => (
               <View key={subject.label} style={styles.subjectRow}>
                 <View style={styles.subjectLabelRow}>
                   <Text style={styles.subjectLabel}>{subject.label}</Text>
@@ -283,10 +300,11 @@ export default function ProgressScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: CognitiveTheme) =>
+  StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: Colors.light.backgroundSecondary,
+    backgroundColor: theme.semantic.backgroundSecondary,
   },
   scroll: {
     flex: 1,
@@ -308,7 +326,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: Colors.light.background,
+    backgroundColor: theme.semantic.background,
     shadowColor: "#000",
     shadowOpacity: 0.08,
     shadowRadius: 6,
@@ -317,18 +335,18 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     ...Typography.h3,
-    color: Colors.light.text,
+    color: theme.semantic.text,
   },
   headerSubtitle: {
     ...Typography.caption,
-    color: Colors.light.textSecondary,
+    color: theme.semantic.textSecondary,
     marginTop: 2,
     maxWidth: 260,
   },
   streakCard: {
     borderRadius: 18,
     padding: 14,
-    backgroundColor: Colors.light.background,
+    backgroundColor: theme.semantic.background,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -354,15 +372,15 @@ const styles = StyleSheet.create({
   },
   streakLabel: {
     ...Typography.small,
-    color: Colors.light.textSecondary,
+    color: theme.semantic.textSecondary,
   },
   streakValue: {
     ...Typography.bodyMedium,
-    color: Colors.light.text,
+    color: theme.semantic.text,
   },
   streakMessage: {
     ...Typography.small,
-    color: Colors.light.textSecondary,
+    color: theme.semantic.textSecondary,
     flex: 1,
     textAlign: "right",
   },
@@ -374,7 +392,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 18,
     padding: 14,
-    backgroundColor: Colors.light.background,
+    backgroundColor: theme.semantic.background,
     alignItems: "center",
     gap: 12,
     shadowColor: "#000",
@@ -388,7 +406,7 @@ const styles = StyleSheet.create({
     height: 120,
     borderRadius: 60,
     borderWidth: 10,
-    borderColor: `${Colors.deepBlue}20`,
+    borderColor: `${theme.brand.primary}20`,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -397,7 +415,7 @@ const styles = StyleSheet.create({
     height: 96,
     borderRadius: 48,
     borderWidth: 8,
-    borderColor: `${Colors.teal}40`,
+    borderColor: `${theme.brand.secondary}40`,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -405,17 +423,17 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: Colors.light.background,
+    backgroundColor: theme.semantic.background,
     alignItems: "center",
     justifyContent: "center",
   },
   circleNumber: {
     ...Typography.h2,
-    color: Colors.deepBlue,
+    color: theme.brand.primary,
   },
   circleLabel: {
     ...Typography.small,
-    color: Colors.light.textSecondary,
+    color: theme.semantic.textSecondary,
   },
   circleStatsRow: {
     width: "100%",
@@ -433,17 +451,17 @@ const styles = StyleSheet.create({
   },
   circleStatLabel: {
     ...Typography.small,
-    color: Colors.light.textSecondary,
+    color: theme.semantic.textSecondary,
   },
   circleStatValue: {
     ...Typography.small,
-    color: Colors.light.text,
+    color: theme.semantic.text,
   },
   lineChartCard: {
     flex: 1,
     borderRadius: 18,
     padding: 14,
-    backgroundColor: Colors.light.background,
+    backgroundColor: theme.semantic.background,
     shadowColor: "#000",
     shadowOpacity: 0.04,
     shadowRadius: 8,
@@ -458,19 +476,19 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...Typography.bodyMedium,
-    color: Colors.light.text,
+    color: theme.semantic.text,
   },
   sectionTitleSmall: {
     ...Typography.small,
-    color: Colors.light.text,
+    color: theme.semantic.text,
   },
   sectionChip: {
     ...Typography.small,
-    color: Colors.deepBlue,
+    color: theme.brand.primary,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: `${Colors.deepBlue}10`,
+    backgroundColor: `${theme.brand.primary}10`,
   },
   lineChart: {
     flexDirection: "row",
@@ -487,29 +505,29 @@ const styles = StyleSheet.create({
     width: 10,
     height: 72,
     borderRadius: 999,
-    backgroundColor: Colors.light.backgroundSecondary,
+    backgroundColor: theme.semantic.backgroundSecondary,
     overflow: "hidden",
     justifyContent: "flex-end",
   },
   lineFill: {
     width: "100%",
     borderRadius: 999,
-    backgroundColor: Colors.teal,
+    backgroundColor: theme.brand.secondary,
   },
   lineDayLabel: {
     ...Typography.small,
     fontSize: 10,
-    color: Colors.light.textSecondary,
+    color: theme.semantic.textSecondary,
     marginTop: 4,
   },
   lineChartCaption: {
     ...Typography.small,
-    color: Colors.light.textSecondary,
+    color: theme.semantic.textSecondary,
   },
   sectionCard: {
     borderRadius: 18,
     padding: 14,
-    backgroundColor: Colors.light.background,
+    backgroundColor: theme.semantic.background,
     shadowColor: "#000",
     shadowOpacity: 0.04,
     shadowRadius: 8,
@@ -533,7 +551,7 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
     borderRadius: 65,
-    backgroundColor: Colors.light.backgroundSecondary,
+    backgroundColor: theme.semantic.backgroundSecondary,
   },
   pieSlice: {
     position: "absolute",
@@ -547,7 +565,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 18,
     borderLeftWidth: 18,
     borderColor: "transparent",
-    borderTopColor: Colors.deepBlue,
+    borderTopColor: theme.brand.primary,
     transform: [{ rotate: "-20deg" }],
   },
   pieSliceAudio: {
@@ -556,14 +574,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 18,
     borderLeftWidth: 18,
     borderColor: "transparent",
-    borderRightColor: Colors.brightOrange,
+    borderRightColor: theme.brand.accent,
     transform: [{ rotate: "70deg" }],
   },
   pieCenter: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: Colors.light.background,
+    backgroundColor: theme.semantic.background,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 4,
@@ -571,12 +589,12 @@ const styles = StyleSheet.create({
   pieCenterLabel: {
     ...Typography.small,
     fontSize: 11,
-    color: Colors.light.text,
+    color: theme.semantic.text,
   },
   pieCenterValue: {
     ...Typography.small,
     fontSize: 10,
-    color: Colors.light.textSecondary,
+    color: theme.semantic.textSecondary,
     textAlign: "center",
   },
   breakdownLegend: {
@@ -595,11 +613,11 @@ const styles = StyleSheet.create({
   },
   legendLabel: {
     ...Typography.small,
-    color: Colors.light.text,
+    color: theme.semantic.text,
   },
   breakdownCaption: {
     ...Typography.small,
-    color: Colors.light.textSecondary,
+    color: theme.semantic.textSecondary,
     marginTop: 4,
   },
   achievementsRow: {
@@ -610,7 +628,7 @@ const styles = StyleSheet.create({
     width: 180,
     borderRadius: 16,
     padding: 12,
-    backgroundColor: Colors.light.backgroundSecondary,
+    backgroundColor: theme.semantic.backgroundSecondary,
   },
   badgeIconCircle: {
     width: 36,
@@ -623,12 +641,12 @@ const styles = StyleSheet.create({
   badgeTitle: {
     ...Typography.bodyMedium,
     fontSize: 15,
-    color: Colors.light.text,
+    color: theme.semantic.text,
     marginBottom: 4,
   },
   badgeDescription: {
     ...Typography.small,
-    color: Colors.light.textSecondary,
+    color: theme.semantic.textSecondary,
   },
   subjectsList: {
     gap: 10,
@@ -643,16 +661,16 @@ const styles = StyleSheet.create({
   },
   subjectLabel: {
     ...Typography.small,
-    color: Colors.light.text,
+    color: theme.semantic.text,
   },
   subjectPercent: {
     ...Typography.small,
-    color: Colors.light.textSecondary,
+    color: theme.semantic.textSecondary,
   },
   progressTrack: {
     height: 8,
     borderRadius: 999,
-    backgroundColor: Colors.light.backgroundSecondary,
+    backgroundColor: theme.semantic.backgroundSecondary,
     overflow: "hidden",
   },
   progressFill: {
@@ -663,7 +681,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     height: 52,
     borderRadius: 16,
-    backgroundColor: Colors.deepBlue,
+    backgroundColor: theme.brand.primary,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

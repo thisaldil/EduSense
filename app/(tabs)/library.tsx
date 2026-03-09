@@ -12,7 +12,8 @@ import {
   View,
 } from "react-native";
 
-import { Colors, Typography } from "@/constants/theme";
+import { type CognitiveTheme, Typography } from "@/constants/theme";
+import { useCognitiveTheme } from "@/hooks/use-cognitive-theme";
 
 type SensoryMode = "Visual" | "Audio" | "Haptic";
 
@@ -107,6 +108,9 @@ const LESSONS: Lesson[] = [
 type ViewMode = "list" | "grid";
 
 export default function LibraryScreen() {
+  const { theme: cognitiveTheme } = useCognitiveTheme();
+  const styles = useMemo(() => createStyles(cognitiveTheme), [cognitiveTheme]);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilter, setSelectedFilter] = useState<FilterChip>("All");
   const [viewMode, setViewMode] = useState<ViewMode>("list");
@@ -148,7 +152,7 @@ export default function LibraryScreen() {
             <Ionicons
               name={SUBJECT_ICONS[item.subject]}
               size={20}
-              color={Colors.deepBlue}
+              color={cognitiveTheme.brand.primary}
             />
           </View>
           <View>
@@ -169,7 +173,11 @@ export default function LibraryScreen() {
         <Ionicons
           name={item.isBookmarked ? "bookmark" : "bookmark-outline"}
           size={20}
-          color={item.isBookmarked ? Colors.deepBlue : Colors.light.icon}
+          color={
+            item.isBookmarked
+              ? cognitiveTheme.brand.primary
+              : cognitiveTheme.semantic.icon
+          }
         />
       </View>
 
@@ -199,7 +207,7 @@ export default function LibraryScreen() {
                     : "phone-portrait-outline"
                 }
                 size={14}
-                color={Colors.deepBlue}
+                color={cognitiveTheme.brand.primary}
               />
               <Text style={styles.modeText}>{mode}</Text>
             </View>
@@ -227,7 +235,7 @@ export default function LibraryScreen() {
             <Ionicons
               name="settings-outline"
               size={20}
-              color={Colors.deepBlue}
+              color={cognitiveTheme.brand.primary}
             />
           </Pressable>
         </View>
@@ -237,17 +245,21 @@ export default function LibraryScreen() {
           <Ionicons
             name="search-outline"
             size={18}
-            color={Colors.light.textSecondary}
+            color={cognitiveTheme.semantic.textSecondary}
           />
           <TextInput
             style={styles.searchInput}
             placeholder="Search for lessons..."
-            placeholderTextColor={Colors.light.textSecondary}
+            placeholderTextColor={cognitiveTheme.semantic.textSecondary}
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
           <Pressable>
-            <Ionicons name="mic-outline" size={18} color={Colors.deepBlue} />
+            <Ionicons
+              name="mic-outline"
+              size={18}
+              color={cognitiveTheme.brand.primary}
+            />
           </Pressable>
         </View>
 
@@ -291,7 +303,9 @@ export default function LibraryScreen() {
                 name="list-outline"
                 size={16}
                 color={
-                  viewMode === "list" ? Colors.deepBlue : Colors.light.icon
+                  viewMode === "list"
+                    ? cognitiveTheme.brand.primary
+                    : cognitiveTheme.semantic.icon
                 }
               />
             </Pressable>
@@ -306,7 +320,9 @@ export default function LibraryScreen() {
                 name="grid-outline"
                 size={16}
                 color={
-                  viewMode === "grid" ? Colors.deepBlue : Colors.light.icon
+                  viewMode === "grid"
+                    ? cognitiveTheme.brand.primary
+                    : cognitiveTheme.semantic.icon
                 }
               />
             </Pressable>
@@ -342,10 +358,11 @@ export default function LibraryScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: CognitiveTheme) =>
+  StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: Colors.light.backgroundSecondary,
+    backgroundColor: theme.semantic.backgroundSecondary,
   },
   container: {
     flex: 1,
@@ -360,7 +377,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     ...Typography.h3,
-    color: Colors.light.text,
+    color: theme.semantic.text,
   },
   iconButton: {
     width: 36,
@@ -368,7 +385,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: Colors.light.background,
+    backgroundColor: theme.semantic.background,
     shadowColor: "#000",
     shadowOpacity: 0.08,
     shadowRadius: 6,
@@ -381,9 +398,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 16,
-    backgroundColor: Colors.light.background,
+    backgroundColor: theme.semantic.background,
     borderWidth: 1,
-    borderColor: Colors.light.border,
+    borderColor: theme.semantic.border,
     gap: 8,
     shadowColor: "#000",
     shadowOpacity: 0.04,
@@ -394,7 +411,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     ...Typography.body,
-    color: Colors.light.text,
+    color: theme.semantic.text,
   },
   filtersRow: {
     flexDirection: "row",
@@ -412,19 +429,19 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: Colors.light.border,
-    backgroundColor: Colors.light.background,
+    borderColor: theme.semantic.border,
+    backgroundColor: theme.semantic.background,
   },
   chipActive: {
-    backgroundColor: `${Colors.deepBlue}10`,
-    borderColor: Colors.deepBlue,
+    backgroundColor: `${theme.brand.primary}10`,
+    borderColor: theme.brand.primary,
   },
   chipLabel: {
     ...Typography.small,
-    color: Colors.light.textSecondary,
+    color: theme.semantic.textSecondary,
   },
   chipLabelActive: {
-    color: Colors.deepBlue,
+    color: theme.brand.primary,
   },
   viewToggleGroup: {
     flexDirection: "row",
@@ -436,13 +453,13 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: Colors.light.background,
+    backgroundColor: theme.semantic.background,
     borderWidth: 1,
-    borderColor: Colors.light.border,
+    borderColor: theme.semantic.border,
   },
   viewToggleButtonActive: {
-    borderColor: Colors.deepBlue,
-    backgroundColor: `${Colors.deepBlue}10`,
+    borderColor: theme.brand.primary,
+    backgroundColor: `${theme.brand.primary}10`,
   },
   listHeaderRow: {
     marginTop: 4,
@@ -450,7 +467,7 @@ const styles = StyleSheet.create({
   },
   listHeaderText: {
     ...Typography.small,
-    color: Colors.light.textSecondary,
+    color: theme.semantic.textSecondary,
   },
   listContent: {
     paddingBottom: 96,
@@ -463,7 +480,7 @@ const styles = StyleSheet.create({
   card: {
     flex: 1,
     borderRadius: 18,
-    backgroundColor: Colors.light.background,
+    backgroundColor: theme.semantic.background,
     padding: 14,
     shadowColor: "#000",
     shadowOpacity: 0.06,
@@ -494,12 +511,12 @@ const styles = StyleSheet.create({
   },
   subjectText: {
     ...Typography.small,
-    color: Colors.light.textSecondary,
+    color: theme.semantic.textSecondary,
     marginBottom: 2,
   },
   durationText: {
     ...Typography.small,
-    color: Colors.light.text,
+    color: theme.semantic.text,
   },
   difficultyText: {
     ...Typography.small,
@@ -511,11 +528,11 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     ...Typography.bodyMedium,
-    color: Colors.light.text,
+    color: theme.semantic.text,
   },
   cardDescription: {
     ...Typography.small,
-    color: Colors.light.textSecondary,
+    color: theme.semantic.textSecondary,
   },
   cardFooter: {
     marginTop: 10,
@@ -535,11 +552,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: Colors.light.backgroundSecondary,
+    backgroundColor: theme.semantic.backgroundSecondary,
   },
   modeText: {
     ...Typography.small,
-    color: Colors.deepBlue,
+    color: theme.brand.primary,
   },
   playButton: {
     width: 36,
@@ -547,7 +564,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: Colors.deepBlue,
+    backgroundColor: theme.brand.primary,
   },
   fab: {
     position: "absolute",
@@ -556,7 +573,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: Colors.brightOrange,
+    backgroundColor: theme.brand.accent,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",

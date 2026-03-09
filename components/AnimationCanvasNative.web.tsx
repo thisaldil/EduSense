@@ -21,7 +21,11 @@ function getCanvasSize(host: HTMLDivElement | null): Size {
   };
 }
 
-export function AnimationCanvasNative({ isPlaying, script, currentTimeMs }: Props) {
+export function AnimationCanvasNative({
+  isPlaying,
+  script,
+  currentTimeMs,
+}: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<AnimationEngine | null>(null);
@@ -54,6 +58,15 @@ export function AnimationCanvasNative({ isPlaying, script, currentTimeMs }: Prop
 
     const observer = new ResizeObserver(() => resizeCanvas());
     observer.observe(host);
+    // Use fixed coordinate space expected by AnimationEngine (matches native/WebView).
+    const W = 800;
+    const H = 600;
+    canvas.width = W;
+    canvas.height = H;
+
+    const engine = new AnimationEngine(ctx as any, W, H, scriptRef.current);
+    engineRef.current = engine;
+    engine.draw?.();
 
     return () => {
       observer.disconnect();
@@ -112,6 +125,17 @@ export function AnimationCanvasNative({ isPlaying, script, currentTimeMs }: Prop
       <div ref={hostRef as any} style={styles.host as any}>
         <canvas ref={canvasRef} style={styles.canvas as any} />
       </div>
+      <canvas
+        ref={canvasRef}
+        width={800}
+        height={600}
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "block",
+          background: "linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%)",
+        }}
+      />
     </View>
   );
 }
