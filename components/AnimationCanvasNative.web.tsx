@@ -35,10 +35,16 @@ export function AnimationCanvasNative({ isPlaying, script }: Props) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    // Use fixed coordinate space expected by AnimationEngine (matches native/WebView).
+    const W = 800;
+    const H = 600;
+    canvas.width = W;
+    canvas.height = H;
+
     const engine = new AnimationEngine(
       ctx as any,
-      canvas.width || 800,
-      canvas.height || 600,
+      W,
+      H,
       scriptRef.current,
     );
     engineRef.current = engine;
@@ -82,6 +88,8 @@ export function AnimationCanvasNative({ isPlaying, script }: Props) {
     <View style={styles.container}>
       <canvas
         ref={canvasRef}
+        width={800}
+        height={600}
         style={{
           width: "100%",
           height: "100%",

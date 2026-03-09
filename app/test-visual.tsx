@@ -907,18 +907,20 @@ requestAnimationFrame(loop);
 </html>`;
 
 export default function TestVisualScreen() {
-  // WebView does not support web — show a simple notice instead.
+  // On web, render the Sunny canvas demo in an iframe so the animation runs.
   if (Platform.OS === "web") {
     return (
       <SafeAreaView style={styles.safe}>
-        <View style={styles.webNotice}>
-          <Text style={styles.webTitle}>test-visual</Text>
-          <Text style={styles.webText}>
-            The Sunny canvas demo is available on the native app (iOS / Android)
-            only. To inspect the HTML version, open your standalone
-            photosynthesis demo file directly in a browser.
-          </Text>
-        </View>
+        <iframe
+          title="Sunny the Plant — Photosynthesis"
+          srcDoc={TEST_HTML}
+          style={{
+            width: "100%",
+            height: "100%",
+            border: "none",
+            display: "block",
+          } as React.CSSProperties}
+        />
       </SafeAreaView>
     );
   }
@@ -941,23 +943,6 @@ const styles = StyleSheet.create({
   },
   webview: {
     flex: 1,
-  },
-  webNotice: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-  },
-  webTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#F9FAFB",
-    marginBottom: 8,
-  },
-  webText: {
-    fontSize: 13,
-    color: "#CBD5F5",
-    textAlign: "center",
   },
 });
 
