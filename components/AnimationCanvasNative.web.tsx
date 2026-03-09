@@ -3,27 +3,32 @@ import { StyleSheet, View } from "react-native";
 
 import { AnimationEngine } from "@/visual";
 import { exampleUsage } from "@/animation/scriptGenerator";
+import { normalizeAnimationScript } from "@/animation/runtime";
 
 type Props = {
   /** Whether the animation should currently be playing */
   isPlaying: boolean;
   /** Engine-ready script from backend. Falls back to exampleUsage() if not provided. */
   script?: any | null;
+  /** External playback position in milliseconds. */
+  currentTimeMs?: number;
 };
 
 /**
  * Web-specific implementation of the animation canvas.
  * Uses a regular HTML <canvas> and the same AnimationEngine as the original React web app.
  */
-export function AnimationCanvasNative({ isPlaying, script }: Props) {
+export function AnimationCanvasNative({ isPlaying, script, currentTimeMs }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<AnimationEngine | null>(null);
-  const scriptRef = useRef<any>(script ?? exampleUsage());
+  const scriptRef = useRef<any>(
+    normalizeAnimationScript(script ?? (exampleUsage() as any)),
+  );
 
   // Keep scriptRef in sync with latest prop
   useEffect(() => {
     if (script) {
-      scriptRef.current = script;
+      scriptRef.current = normalizeAnimationScript(script);
     }
   }, [script]);
 
@@ -60,6 +65,14 @@ export function AnimationCanvasNative({ isPlaying, script }: Props) {
     }
   }, [isPlaying]);
 
+  // Keep canvas aligned with external timeline (scene jumps/reset/seek).
+  useEffect(() => {
+    if (currentTimeMs == null) return;
+    const engine = engineRef.current;
+    if (!engine) return;
+    engine.seek?.(currentTimeMs);
+  }, [currentTimeMs]);
+
   // When a NEW script arrives, swap it into the existing engine and reset playback.
   useEffect(() => {
     if (!script) return;
@@ -67,9 +80,8 @@ export function AnimationCanvasNative({ isPlaying, script }: Props) {
     scriptRef.current = script;
     if (!engine) return;
 
-    (engine as any).script = script;
+    engine.setScript?.(normalizeAnimationScript(script) as any);
     (engine as any).currentTime = 0;
-    (engine as any).reset?.();
 
     if (isPlaying) {
       engine.play();

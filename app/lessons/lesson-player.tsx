@@ -24,6 +24,7 @@ import { useSensory } from "@/hooks/useSensory";
 import { BiometricBanner } from "@/components/sensory/BiometricBanner";
 import { SensoryToggle } from "@/components/sensory/SensoryToggle";
 import { SensoryDebugOverlay } from "@/components/sensory/SensoryDebugOverlay";
+import { normalizeAnimationScript } from "@/animation/runtime";
 
 type AnimationScript = animationApi.NeuroAdaptiveAnimationScript;
 type Scene = AnimationScript["scenes"][0];
@@ -348,7 +349,7 @@ function useNeuroAdaptiveScript({
 
         if (lessonMatches && stateMatches) {
           lastStateRef.current = latest.cognitive_state;
-          setScript(latest.script);
+          setScript(normalizeAnimationScript(latest.script) as any);
           return;
         }
       }
@@ -373,7 +374,7 @@ function useNeuroAdaptiveScript({
       });
 
       lastStateRef.current = resolvedState;
-      setScript(animation.script);
+      setScript(normalizeAnimationScript(animation.script) as any);
     } catch (err: any) {
       setError(
         err?.message || "Unable to generate a visual explanation right now.",
@@ -555,9 +556,22 @@ export function LessonAnimationPanel({
 
         {script && !error && (
           <>
-            <AnimationCanvasNative isPlaying={isPlaying} script={script} />
+            <AnimationCanvasNative
+              isPlaying={isPlaying}
+              script={script}
+              currentTimeMs={currentTime}
+            />
             {/* Dev-only overlay for Member 3 cues */}
             <SensoryDebugOverlay />
+            {__DEV__ && (
+              <View style={panelSt.debugPill} pointerEvents="none">
+                <Text style={panelSt.debugText}>
+                  scene {activeSceneIdx + 1}/{script.scenes.length} · actors{" "}
+                  {currentScene?.actors?.length ?? 0} · t {Math.floor(currentTime)}
+                  ms
+                </Text>
+              </View>
+            )}
           </>
         )}
 
@@ -785,6 +799,21 @@ const panelSt = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     color: "#1E293B",
+  },
+  debugPill: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    backgroundColor: "rgba(15,23,42,0.82)",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    zIndex: 6,
+  },
+  debugText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#E2E8F0",
   },
 
   progressBar: {

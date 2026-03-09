@@ -19,6 +19,7 @@ import {
   detectDomain as detectDomainFromCore,
   DOMAIN_PLUGINS,
 } from "./core/domainDetector";
+import { drawSceneEnvironment, drawSlideLabel } from "./runtime";
 
 export type Ctx2D = CanvasRenderingContext2D;
 export type { ConceptDomain };
@@ -47,7 +48,19 @@ export function renderUniversalScene(
   const t = elapsed * 0.05;
   const plugin = DOMAIN_PLUGINS[domain] ?? DOMAIN_PLUGINS.generic;
 
-  plugin.drawBackground(ctx, W, H);
+  const env = String(scene?.environment || "minimal")
+    .toLowerCase()
+    .trim();
+  if (
+    env === "minimal" ||
+    env === "classroom" ||
+    env === "nature" ||
+    env === "science"
+  ) {
+    drawSceneEnvironment(ctx, W, H, env as any);
+  } else {
+    plugin.drawBackground(ctx, W, H);
+  }
 
   const useChoreography =
     domain === "photosynthesis" ||
@@ -67,7 +80,11 @@ export function renderUniversalScene(
   }
 
   if (visualActors === 0 && !hasChoreography(scene)) {
-    plugin.keywordFallback(ctx, scene.text || "", elapsed, t, W, H);
+    if (scene.text) {
+      drawSlideLabel(ctx, scene.text, W, H);
+    } else {
+      plugin.keywordFallback(ctx, scene.text || "", elapsed, t, W, H);
+    }
   }
 
   (ctx as any).endFrameEXP?.();
