@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { useMemo } from "react";
 import {
   Pressable,
   SafeAreaView,
@@ -10,14 +11,9 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 
-import { Colors, Typography } from "@/constants/theme";
+import { type CognitiveTheme, Typography } from "@/constants/theme";
 import { useAuth } from "@/contexts/AuthContext";
-
-const achievements = [
-  { id: "a1", label: "First Lesson", color: "#FEF3C7" },
-  { id: "a2", label: "5-Day Streak", color: "#DBEAFE" },
-  { id: "a3", label: "Sensory Explorer", color: "#E0F2FE" },
-];
+import { useCognitiveTheme } from "@/hooks/use-cognitive-theme";
 
 const favoriteSubjects = ["Science", "Maths", "Music", "Art"];
 
@@ -28,6 +24,33 @@ const recentActivity = [
 ];
 
 export default function ProfileScreen() {
+  const { theme: cognitiveTheme } = useCognitiveTheme();
+  const styles = useMemo(() => createStyles(cognitiveTheme), [cognitiveTheme]);
+
+  const achievements = useMemo(
+    () => [
+      {
+        id: "a1",
+        label: "First Lesson",
+        color: "#FEF3C7",
+        iconColor: "#B45309",
+      },
+      {
+        id: "a2",
+        label: "5-Day Streak",
+        color: `${cognitiveTheme.brand.primary}22`,
+        iconColor: cognitiveTheme.brand.primary,
+      },
+      {
+        id: "a3",
+        label: "Sensory Explorer",
+        color: `${cognitiveTheme.brand.secondary}22`,
+        iconColor: cognitiveTheme.brand.secondary,
+      },
+    ],
+    [cognitiveTheme],
+  );
+
   const { user } = useAuth();
   const userName = user?.first_name || user?.username || "User";
   const userInitial = userName.charAt(0).toUpperCase();
@@ -54,7 +77,7 @@ export default function ProfileScreen() {
             <Ionicons
               name="settings-outline"
               size={20}
-              color={Colors.deepBlue}
+              color={cognitiveTheme.brand.primary}
             />
           </Pressable>
         </View>
@@ -83,7 +106,11 @@ export default function ProfileScreen() {
             style={styles.editButton}
             onPress={() => router.push("/edit-profile")}
           >
-            <Ionicons name="pencil-outline" size={16} color={Colors.deepBlue} />
+            <Ionicons
+              name="pencil-outline"
+              size={16}
+              color={cognitiveTheme.brand.primary}
+            />
             <Text style={styles.editText}>Edit profile</Text>
           </Pressable>
         </View>
@@ -122,7 +149,7 @@ export default function ProfileScreen() {
                 <Ionicons
                   name="ribbon-outline"
                   size={18}
-                  color={Colors.deepBlue}
+                  color={badge.iconColor}
                 />
                 <Text style={styles.badgeText}>{badge.label}</Text>
               </View>
@@ -156,7 +183,7 @@ export default function ProfileScreen() {
                   <Ionicons
                     name="play-circle"
                     size={20}
-                    color={Colors.deepBlue}
+                    color={cognitiveTheme.brand.primary}
                   />
                 </View>
                 <View style={styles.activityText}>
@@ -173,7 +200,7 @@ export default function ProfileScreen() {
           <Ionicons
             name="log-out-outline"
             size={18}
-            color={Colors.light.textSecondary}
+            color={cognitiveTheme.semantic.textSecondary}
           />
           <Text style={styles.signOutText}>Sign out</Text>
         </Pressable>
@@ -182,10 +209,11 @@ export default function ProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: CognitiveTheme) =>
+  StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: Colors.light.backgroundSecondary,
+    backgroundColor: theme.semantic.backgroundSecondary,
   },
   scroll: {
     flex: 1,
@@ -203,7 +231,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     ...Typography.h3,
-    color: Colors.light.text,
+    color: theme.semantic.text,
   },
   iconButton: {
     width: 36,
@@ -211,7 +239,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: Colors.light.background,
+    backgroundColor: theme.semantic.background,
     shadowColor: "#000",
     shadowOpacity: 0.08,
     shadowRadius: 6,
@@ -222,7 +250,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     height: 110,
     borderRadius: 18,
-    backgroundColor: Colors.deepBlue,
+    backgroundColor: theme.brand.primary,
   },
   avatarWrapper: {
     alignItems: "center",
@@ -232,11 +260,11 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: Colors.light.background,
+    backgroundColor: theme.semantic.background,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 3,
-    borderColor: Colors.light.backgroundSecondary,
+    borderColor: theme.semantic.backgroundSecondary,
     overflow: "hidden",
   },
   avatarImage: {
@@ -246,7 +274,7 @@ const styles = StyleSheet.create({
   },
   avatarInitial: {
     ...Typography.h2,
-    color: Colors.deepBlue,
+    color: theme.brand.primary,
   },
   nameBlock: {
     alignItems: "center",
@@ -254,11 +282,11 @@ const styles = StyleSheet.create({
   },
   name: {
     ...Typography.h2,
-    color: Colors.light.text,
+    color: theme.semantic.text,
   },
   bio: {
     ...Typography.caption,
-    color: Colors.light.textSecondary,
+    color: theme.semantic.textSecondary,
   },
   editButton: {
     marginTop: 6,
@@ -266,14 +294,14 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: Colors.light.border,
+    borderColor: theme.semantic.border,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
   },
   editText: {
     ...Typography.caption,
-    color: Colors.deepBlue,
+    color: theme.brand.primary,
   },
   statsRow: {
     flexDirection: "row",
@@ -286,11 +314,11 @@ const styles = StyleSheet.create({
   },
   statValue: {
     ...Typography.h3,
-    color: Colors.light.text,
+    color: theme.semantic.text,
   },
   statLabel: {
     ...Typography.small,
-    color: Colors.light.textSecondary,
+    color: theme.semantic.textSecondary,
     marginTop: 2,
   },
   section: {
@@ -304,7 +332,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...Typography.bodyMedium,
-    color: Colors.light.text,
+    color: theme.semantic.text,
   },
   badgeRow: {
     gap: 10,
@@ -319,7 +347,7 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     ...Typography.caption,
-    color: Colors.light.text,
+    color: theme.semantic.text,
   },
   tagRow: {
     flexDirection: "row",
@@ -330,19 +358,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: Colors.light.background,
+    backgroundColor: theme.semantic.background,
     borderWidth: 1,
-    borderColor: Colors.light.border,
+    borderColor: theme.semantic.border,
   },
   tagText: {
     ...Typography.small,
-    color: Colors.light.text,
+    color: theme.semantic.text,
   },
   activityList: {
     borderRadius: 16,
-    backgroundColor: Colors.light.background,
+    backgroundColor: theme.semantic.background,
     borderWidth: 1,
-    borderColor: Colors.light.border,
+    borderColor: theme.semantic.border,
   },
   activityItem: {
     flexDirection: "row",
@@ -350,13 +378,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.light.border,
+    borderBottomColor: theme.semantic.border,
   },
   activityIcon: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: Colors.light.backgroundSecondary,
+    backgroundColor: theme.semantic.backgroundSecondary,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 10,
@@ -366,11 +394,11 @@ const styles = StyleSheet.create({
   },
   activityTitle: {
     ...Typography.bodyMedium,
-    color: Colors.light.text,
+    color: theme.semantic.text,
   },
   activityTime: {
     ...Typography.small,
-    color: Colors.light.textSecondary,
+    color: theme.semantic.textSecondary,
     marginTop: 2,
   },
   signOutRow: {
@@ -382,6 +410,6 @@ const styles = StyleSheet.create({
   },
   signOutText: {
     ...Typography.body,
-    color: Colors.light.textSecondary,
+    color: theme.semantic.textSecondary,
   },
 });
