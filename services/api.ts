@@ -437,6 +437,82 @@ export namespace animationApi {
 }
 
 /**
+ * Sensory enrich-script API
+ * POST /api/sensory/enrich-script – takes a visual script and returns it with
+ * per-scene audio (narration) and haptics added. All times in ms from animation start.
+ */
+export namespace sensoryEnrichApi {
+  export type CognitiveState = "OVERLOAD" | "OPTIMAL" | "LOW_LOAD";
+
+  /** Narration item: at (ms), duration (ms), text; timeline optional. */
+  export interface EnrichNarrationItem {
+    at: number;
+    duration: number;
+    text: string;
+    timeline?: unknown;
+  }
+
+  /** Haptic timeline entry: at (ms), action (e.g. "start"), duration optional. */
+  export interface EnrichHapticTimelineEntry {
+    at: number;
+    action: string;
+    duration?: number;
+  }
+
+  /** Per-scene haptic: id, pattern, intensity 0–1, channel optional, timeline. */
+  export interface EnrichSceneHaptic {
+    id: string;
+    pattern: string;
+    intensity?: number;
+    channel?: string;
+    timeline: EnrichHapticTimelineEntry[];
+  }
+
+  /** Per-scene audio from enrich response. */
+  export interface EnrichSceneAudio {
+    narration: EnrichNarrationItem[];
+    effects?: unknown[];
+  }
+
+  /** Top-level sensory metadata on enriched script. */
+  export interface EnrichSensoryMeta {
+    cognitive_state: string;
+    ambient_mode?: "silence" | "40hz_gamma" | "spatial_music";
+    speech_rate?: "slow" | "normal" | "fast";
+  }
+
+  /** Scene with optional audio and haptics (enriched). */
+  export interface EnrichedScene extends animationApi.NeuroAdaptiveScene {
+    audio?: EnrichSceneAudio;
+    haptics?: EnrichSceneHaptic[];
+  }
+
+  /** Enriched script: same as visual script plus sensory and per-scene audio/haptics. */
+  export interface EnrichedAnimationScript
+    extends animationApi.NeuroAdaptiveAnimationScript {
+    sensory?: EnrichSensoryMeta;
+    scenes: EnrichedScene[];
+  }
+
+  export interface EnrichScriptRequest {
+    script: animationApi.NeuroAdaptiveAnimationScript;
+    cognitive_state?: CognitiveState;
+  }
+
+  /** Response body is the enriched script (same shape with sensory + scene.audio/haptics). */
+  export interface EnrichScriptResponse extends EnrichedAnimationScript {}
+
+  /**
+   * POST /api/sensory/enrich-script
+   * Enrich a visual script with per-scene narration and haptics. On failure, caller should fall back to visual-only playback.
+   */
+  export const enrichScript = (
+    body: EnrichScriptRequest,
+  ): Promise<EnrichScriptResponse> =>
+    apiPost<EnrichScriptResponse>(API_ENDPOINTS.SENSORY_ENRICH_SCRIPT, body);
+}
+
+/**
  * Higher-level domain-specific API helpers
  * These wrap the low-level apiGet/apiPost/etc with concrete endpoints.
  */

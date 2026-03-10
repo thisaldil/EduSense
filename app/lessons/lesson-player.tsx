@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { AnimationCanvasNative } from "@/components/AnimationCanvasNative";
-import { animationApi } from "@/services/api";
+import { animationApi, sensoryEnrichApi } from "@/services/api";
 import { generateQuiz, getLatestTransmutedContent } from "@/services/lessons";
 import { useNeuroState } from "@/context/NeuroStateContext";
 import { useAnalyticsLogger } from "@/context/AnalyticsLoggerContext";
@@ -22,6 +22,7 @@ import { BiometricBanner } from "@/components/sensory/BiometricBanner";
 import { SensoryToggle } from "@/components/sensory/SensoryToggle";
 
 type AnimationScript = animationApi.NeuroAdaptiveAnimationScript;
+type EnrichedScript = sensoryEnrichApi.EnrichedAnimationScript;
 type Scene = AnimationScript["scenes"][0];
 
 // ─── State config ──────────────────────────────────────────────────────────
@@ -409,6 +410,35 @@ export function LessonAnimationPanel({
   const listRef = useRef<FlatList>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Playback script: visual script enriched with sensory (narration + haptics). Fallback to visual-only if enrich fails.
+  const [playbackScript, setPlaybackScript] = useState<
+    AnimationScript | EnrichedScript | null
+  >(null);
+
+  // When we have a visual script, enrich it before playback; use result as single source of truth for animation + audio + haptics.
+  useEffect(() => {
+    if (!script) {
+      setPlaybackScript(null);
+      return;
+    }
+    setPlaybackScript(script);
+    const cognitiveStateWire = cognitiveState as
+      | "OVERLOAD"
+      | "OPTIMAL"
+      | "LOW_LOAD";
+    sensoryEnrichApi
+      .enrichScript({
+        script,
+        cognitive_state: cognitiveStateWire,
+      })
+      .then((enriched) => {
+        setPlaybackScript(enriched);
+      })
+      .catch(() => {
+        // Fallback: keep visual-only script; no narration/haptics
+      });
+  }, [script, cognitiveState]);
+
   // Reset on new script
   useEffect(() => {
     setIsPlaying(false);
@@ -416,12 +446,12 @@ export function LessonAnimationPanel({
     setActiveSceneIdx(0);
   }, [script]);
 
-  // Member 3 – Sensory overlay (haptics + audio) driven by the same clock
+  // Member 3 – Sensory overlay (haptics + audio) driven by the same clock; uses enriched script when available.
   useSensory({
     lessonId: lessonId ?? "",
     studentId,
     sessionId: sessionId ?? undefined,
-    script,
+    script: playbackScript,
     cognitiveState,
     animationClock: {
       currentTimeMs: currentTime,
@@ -432,14 +462,14 @@ export function LessonAnimationPanel({
   // Ticker
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
-    if (!script || !isPlaying) return;
+    if (!playbackScript || !isPlaying) return;
 
     const step = 100 * speedFactor;
 
     intervalRef.current = setInterval(() => {
       setCurrentTime((t) => {
-        const next = Math.min(script.duration, t + step);
-        const idx = script.scenes.findIndex(
+        const next = Math.min(playbackScript.duration, t + step);
+        const idx = playbackScript.scenes.findIndex(
           (s) => next >= s.startTime && next < s.startTime + s.duration,
         );
         if (idx !== -1 && idx !== activeSceneIdx) {
@@ -452,7 +482,7 @@ export function LessonAnimationPanel({
             });
           } catch {}
         }
-        if (next >= script.duration) setIsPlaying(false);
+        if (next >= playbackScript.duration) setIsPlaying(false);
         return next;
       });
     }, 100);
@@ -460,12 +490,12 @@ export function LessonAnimationPanel({
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [script, isPlaying, activeSceneIdx]);
+  }, [playbackScript, isPlaying, activeSceneIdx]);
 
   const jumpToScene = (idx: number) => {
-    if (!script) return;
+    if (!playbackScript) return;
     setActiveSceneIdx(idx);
-    setCurrentTime(script.scenes[idx].startTime);
+    setCurrentTime(playbackScript.scenes[idx].startTime);
     try {
       listRef.current?.scrollToIndex({
         index: idx,
@@ -475,15 +505,15 @@ export function LessonAnimationPanel({
     } catch {}
   };
 
-  const progress = script
-    ? Math.min(100, (currentTime / script.duration) * 100)
+  const progress = playbackScript
+    ? Math.min(100, (currentTime / playbackScript.duration) * 100)
     : 0;
   const formatTime = (ms: number) => {
     const s = Math.floor(ms / 1000);
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   };
 
-  const currentScene = script?.scenes[activeSceneIdx] ?? null;
+  const currentScene = playbackScript?.scenes[activeSceneIdx] ?? null;
   const stateConf =
     STATE_CONFIG[cognitiveState as keyof typeof STATE_CONFIG] ??
     STATE_CONFIG.OVERLOAD;
@@ -499,15 +529,15 @@ export function LessonAnimationPanel({
   return (
     <View style={panelSt.root}>
       {/* ── Header row ── */}
-      {script && (
+      {playbackScript && (
         <View style={panelSt.headerRow}>
           <BiometricBanner />
           <Text style={panelSt.titleText} numberOfLines={1}>
-            {script.title || "Animation"}
+            {playbackScript.title || "Animation"}
           </Text>
           <View style={panelSt.timerBox}>
             <Text style={panelSt.timerText}>
-              {formatTime(currentTime)} / {formatTime(script.duration)}
+              {formatTime(currentTime)} / {formatTime(playbackScript.duration)}
             </Text>
           </View>
         </View>
@@ -552,14 +582,14 @@ export function LessonAnimationPanel({
           <>
             <AnimationCanvasNative
               isPlaying={isPlaying}
-              script={script}
+              script={playbackScript}
               currentTimeMs={currentTime}
             />
           </>
         )}
 
         {/* Bottom progress bar */}
-        {script && (
+        {playbackScript && (
           <View style={panelSt.progressBar}>
             <View
               style={[panelSt.progressFill, { width: `${progress}%` as any }]}
@@ -569,21 +599,21 @@ export function LessonAnimationPanel({
       </View>
 
       {/* ── Scene narration (OUTSIDE canvas, below it) ── */}
-      {script && !loading && !error && currentScene?.text && (
+      {playbackScript && !loading && !error && currentScene?.text && (
         <View style={panelSt.sceneNarration}>
           <View style={panelSt.sceneNumPill}>
             <Text style={panelSt.sceneNumText}>
-              {activeSceneIdx + 1}/{script.scenes.length}
+              {activeSceneIdx + 1}/{playbackScript.scenes.length}
             </Text>
           </View>
-          <Text style={panelSt.sceneNarrationText} numberOfLines={2}>
+          <Text style={panelSt.sceneNarrationText}>
             {currentScene.text}
           </Text>
         </View>
       )}
 
       {/* ── Controls ── */}
-      {script && (
+      {playbackScript && (
         <View style={panelSt.controls}>
           <Pressable
             style={[panelSt.btn, isPlaying && panelSt.btnActive]}
@@ -591,7 +621,7 @@ export function LessonAnimationPanel({
               if (isPlaying) {
                 setIsPlaying(false);
               } else {
-                if (currentTime >= (script.duration ?? 0)) setCurrentTime(0);
+                if (currentTime >= (playbackScript.duration ?? 0)) setCurrentTime(0);
                 setIsPlaying(true);
               }
             }}
@@ -619,10 +649,10 @@ export function LessonAnimationPanel({
       )}
 
       {/* ── Neuro equation ── */}
-      {script && <NeuroEquation cognitiveState={cognitiveState} />}
+      {playbackScript && <NeuroEquation cognitiveState={cognitiveState} />}
 
       {/* ── Scene thumbnail strip ── */}
-      {script && script.scenes.length > 0 && (
+      {playbackScript && playbackScript.scenes.length > 0 && (
         <View style={panelSt.stripWrap}>
           <View style={panelSt.stripHead}>
             <Text style={panelSt.stripTitle}>SCENES</Text>
@@ -632,7 +662,7 @@ export function LessonAnimationPanel({
           </View>
           <FlatList
             ref={listRef}
-            data={script.scenes}
+            data={playbackScript.scenes}
             horizontal
             keyExtractor={(_, i) => String(i)}
             showsHorizontalScrollIndicator={false}
