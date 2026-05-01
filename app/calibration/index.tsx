@@ -1,12 +1,12 @@
 /**
- * BrainSyncScreen v2  —  Grade 6 Cognitive Calibration
- *
- * Designed for 11–12 year olds:
- *   • Big tap targets, friendly language, emoji cues
- *   • No jargon ("Brain Sync" not "Calibration")
- *   • Real plant diagram for Task 2 (tap Leaf vs Root)
- *   • 3-round sensory task averaged for reliability
- *   • CLI (Cognitive Load Index) computed client-side
+ * BrainSyncScreen v3  —  Grade 6 Cognitive Calibration
+ * Redesigned for 11–12 year olds:
+ *   • Chunky, rounded, playful aesthetic
+ *   • Bold color-per-task branding
+ *   • Large tap targets (≥56 px tall)
+ *   • Animated progress star trail
+ *   • Friendly, emoji-rich copy
+ *   • Bouncy feedback animations
  */
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Easing,
   Image,
   Pressable,
   SafeAreaView,
@@ -30,16 +31,52 @@ import { useAnalyticsLogger } from "@/context/AnalyticsLoggerContext";
 import { useNeuroState } from "@/context/NeuroStateContext";
 import { neuroApi } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { getCurrentUser } from "@/services/user";
 
 // ─────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────
 
-const IDLE_THRESHOLD_MS = 3500; // slightly more forgiving for kids
+const IDLE_THRESHOLD_MS = 3500;
 const SENTENCE_DISPLAY_MS = 5000;
 const PULSE_ROUNDS = 3;
 const MIN_PULSE_DELAY_MS = 800;
 const MAX_PULSE_DELAY_MS = 2000;
+
+// ─────────────────────────────────────────────────────────────
+// Design tokens
+// ─────────────────────────────────────────────────────────────
+
+const C = {
+  bg: "#F0F4FF",
+  card: "#FFFFFF",
+  ink: "#1A1A2E",
+  gray: "#7B8794",
+  border: "#E2E8F0",
+  white: "#FFFFFF",
+
+  // Task 1 – warm amber
+  t1Bg: "#FFF8ED",
+  t1Accent: "#F97316",
+  t1Light: "#FEF3C7",
+
+  // Task 2 – leaf green
+  t2Bg: "#EDFFF4",
+  t2Accent: "#22C55E",
+  t2Light: "#DCFCE7",
+
+  // Task 3 – electric violet
+  t3Bg: "#F3EEFF",
+  t3Accent: "#8B5CF6",
+  t3Light: "#EDE9FE",
+
+  // Primary CTA
+  cta: "#4F46E5",
+  ctaLight: "#EEF2FF",
+
+  correct: "#16A34A",
+  wrong: "#EF4444",
+};
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -59,9 +96,9 @@ export type TaskMetrics = {
 };
 
 export type CognitiveLoadSummary = {
-  cli: number; // 0–100, higher = more cognitive load
+  cli: number;
   dominantChannel: "nlp" | "visual" | "sensory";
-  overloadSignal: boolean; // cli > 65
+  overloadSignal: boolean;
   perTask: Record<string, number>;
 };
 
@@ -141,6 +178,43 @@ const useIdleTracker = (active = true) => {
 };
 
 // ─────────────────────────────────────────────────────────────
+// Shared: BounceIn wrapper
+// ─────────────────────────────────────────────────────────────
+
+const BounceIn: React.FC<{ children: React.ReactNode; delay?: number }> = ({
+  children,
+  delay = 0,
+}) => {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(anim, {
+      toValue: 1,
+      useNativeDriver: true,
+      delay,
+      friction: 6,
+      tension: 120,
+    }).start();
+  }, []);
+  return (
+    <Animated.View
+      style={{
+        opacity: anim,
+        transform: [
+          {
+            scale: anim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.7, 1],
+            }),
+          },
+        ],
+      }}
+    >
+      {children}
+    </Animated.View>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
 // Task 1 · NLP — Reading & Recall
 // ─────────────────────────────────────────────────────────────
 
@@ -150,6 +224,7 @@ const NLPTask: React.FC<TaskProps> = ({ onComplete }) => {
   const [selected, setSelected] = useState<number | null>(null);
   const [answerChanges, setChanges] = useState(0);
   const [done, setDone] = useState(false);
+  const shakeAnim = useRef(new Animated.Value(0)).current;
 
   const taskStart = useRef(Date.now());
   const shownAt = useRef<number | null>(null);
@@ -160,7 +235,6 @@ const NLPTask: React.FC<TaskProps> = ({ onComplete }) => {
     stop: stopIdle,
   } = useIdleTracker(phase === "answer");
 
-  // Countdown timer
   useEffect(() => {
     if (phase !== "read") return;
     const iv = setInterval(() => {
@@ -177,6 +251,31 @@ const NLPTask: React.FC<TaskProps> = ({ onComplete }) => {
     return () => clearInterval(iv);
   }, [phase]);
 
+  const shake = () => {
+    Animated.sequence([
+      Animated.timing(shakeAnim, {
+        toValue: 8,
+        duration: 60,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnim, {
+        toValue: -8,
+        duration: 60,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnim, {
+        toValue: 6,
+        duration: 60,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnim, {
+        toValue: 0,
+        duration: 60,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
   const handleSelect = (idx: number) => {
     if (done) return;
     resetIdle();
@@ -189,11 +288,10 @@ const NLPTask: React.FC<TaskProps> = ({ onComplete }) => {
     if (selected === null || done) return;
     stopIdle();
     setDone(true);
-
-    const CORRECT = 1; // "Autotrophs"
+    const CORRECT = 1;
     const correct = selected === CORRECT;
+    if (!correct) shake();
     const { avg, variability } = computeTimingStats(tapTimes.current);
-
     onComplete({
       taskId: "nlp",
       answerChanges,
@@ -208,80 +306,105 @@ const NLPTask: React.FC<TaskProps> = ({ onComplete }) => {
     });
   };
 
-  const options = ["Decomposers", "Autotrophs", "Predators"];
+  const options = [
+    { label: "Decomposers", emoji: "🍄" },
+    { label: "Autotrophs", emoji: "🌱" },
+    { label: "Predators", emoji: "🦁" },
+  ];
 
   return (
-    <View style={s.taskCard}>
-      <View style={s.taskHeader}>
-        <View style={[s.taskBadge, { backgroundColor: "#FFF7ED" }]}>
-          <Text style={[s.taskBadgeText, { color: "#C2410C" }]}>📖 Task 1</Text>
+    <BounceIn>
+      <View
+        style={[s.taskCard, { borderTopColor: C.t1Accent, borderTopWidth: 5 }]}
+      >
+        {/* Badge */}
+        <View style={s.taskHeader}>
+          <View style={[s.taskBadge, { backgroundColor: C.t1Light }]}>
+            <Text style={[s.taskBadgeText, { color: C.t1Accent }]}>
+              📖 Task 1 of 3
+            </Text>
+          </View>
+          <Text style={s.taskTitle}>Quick Memory Check</Text>
+          <Text style={s.taskSubtitle}>
+            Read the sentence, then answer the question below!
+          </Text>
         </View>
-        <Text style={s.taskTitle}>Quick Memory Check</Text>
-      </View>
 
-      {phase === "read" ? (
-        <View style={s.sentenceBox}>
-          <Text style={s.sentenceText}>
-            Plants are called <Text style={s.highlight}>autotrophs</Text>{" "}
-            because they make their own food using sunlight, water, and air. 🌿
-          </Text>
-          <View style={s.countdownRow}>
-            <Text style={s.countdownLabel}>Disappears in</Text>
-            <Text style={s.countdownNum}>{countdown}s</Text>
-          </View>
-        </View>
-      ) : (
-        <>
-          <Text style={s.questionText}>
-            🤔 What do we call plants that make their own food?
-          </Text>
-          <View style={s.optionsCol}>
-            {options.map((opt, idx) => (
-              <Pressable
-                key={opt}
-                style={[s.optBtn, selected === idx && s.optBtnSelected]}
-                onPress={() => handleSelect(idx)}
+        {phase === "read" ? (
+          <View style={[s.sentenceBox, { borderLeftColor: C.t1Accent }]}>
+            <Text style={s.sentenceText}>
+              Plants are called{" "}
+              <Text style={[s.highlight, { color: C.t1Accent }]}>
+                autotrophs
+              </Text>{" "}
+              because they make their own food using sunlight, water, and air.
+              🌿
+            </Text>
+            <View style={s.countdownRow}>
+              <Text style={s.countdownLabel}>Disappears in </Text>
+              <View
+                style={[s.countdownBubble, { backgroundColor: C.t1Accent }]}
               >
-                <Text
-                  style={[s.optText, selected === idx && s.optTextSelected]}
-                >
-                  {opt}
-                </Text>
-              </Pressable>
-            ))}
+                <Text style={s.countdownNum}>{countdown}s</Text>
+              </View>
+            </View>
           </View>
-          <Pressable
-            style={[s.primaryBtn, selected === null && s.btnDisabled]}
-            disabled={selected === null}
-            onPress={handleConfirm}
-          >
-            <Text style={s.primaryBtnText}>That's my answer ✓</Text>
-          </Pressable>
-        </>
-      )}
-    </View>
+        ) : (
+          <Animated.View style={{ transform: [{ translateX: shakeAnim }] }}>
+            <Text style={s.questionText}>
+              🤔 What do we call plants that make their own food?
+            </Text>
+            <View style={s.optionsCol}>
+              {options.map((opt, idx) => (
+                <Pressable
+                  key={opt.label}
+                  style={[
+                    s.optBtn,
+                    selected === idx && [
+                      s.optBtnSelected,
+                      { borderColor: C.t1Accent, backgroundColor: C.t1Light },
+                    ],
+                  ]}
+                  onPress={() => handleSelect(idx)}
+                >
+                  <Text style={s.optEmoji}>{opt.emoji}</Text>
+                  <Text
+                    style={[
+                      s.optText,
+                      selected === idx && {
+                        color: C.t1Accent,
+                        fontWeight: "800",
+                      },
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                  {selected === idx && <Text style={s.optCheck}>✓</Text>}
+                </Pressable>
+              ))}
+            </View>
+
+            <Pressable
+              style={[
+                s.ctaBtn,
+                { backgroundColor: C.t1Accent },
+                selected === null && s.btnDisabled,
+              ]}
+              disabled={selected === null}
+              onPress={handleConfirm}
+            >
+              <Text style={s.ctaBtnText}>That's my answer! ✓</Text>
+            </Pressable>
+          </Animated.View>
+        )}
+      </View>
+    </BounceIn>
   );
 };
 
 // ─────────────────────────────────────────────────────────────
-// Task 2 · Visual — Plant Diagram Tap (Leaf vs Root)
+// Task 2 · Visual — Plant Diagram Tap
 // ─────────────────────────────────────────────────────────────
-
-/**
- * Uses the real "Parts of a Plant" diagram.
- * The image is 576×610 px. We render it at a fixed display width
- * and place invisible tap-zone <Pressable>s over the correct labels.
- *
- * Layout (approximate % of display width 320px):
- *   Leaf label  → top-left,  ~x:2%,  y:28%,  w:22%, h:8%
- *   Root label  → bot-left,  ~x:2%,  y:82%,  w:22%, h:8%
- *   Flower      → top-right, ~x:62%, y:14%,  w:28%, h:8%
- *   Stem        → mid-left,  ~x:16%, y:58%,  w:18%, h:8%
- *   Fruit       → mid-right, ~x:58%, y:52%,  w:18%, h:8%
- *
- * Task: The student must tap the label shown in `target` (Leaf or Root).
- * We alternate targets across rounds for more signal.
- */
 
 type PlantZone = {
   label: string;
@@ -350,7 +473,6 @@ const VisualTask: React.FC<TaskProps> = ({ onComplete }) => {
   const taskStart = useRef(Date.now());
   const roundAt = useRef(Date.now());
   const tapTimes = useRef<number[]>([]);
-  const errPerRound = useRef<number[]>([]);
   const { gaps, reset: resetIdle, stop: stopIdle } = useIdleTracker(!done);
 
   const currentTarget = ROUNDS[round]?.target ?? "Leaf";
@@ -359,14 +481,11 @@ const VisualTask: React.FC<TaskProps> = ({ onComplete }) => {
   const handleTap = (zone: PlantZone) => {
     if (done || feedback !== null) return;
     resetIdle();
-
     const rt = Date.now() - roundAt.current;
 
     if (zone.isTarget) {
       tapTimes.current.push(rt);
-      errPerRound.current.push(0);
       setFeedback("correct");
-
       setTimeout(() => {
         setFeedback(null);
         const nextRound = round + 1;
@@ -374,16 +493,15 @@ const VisualTask: React.FC<TaskProps> = ({ onComplete }) => {
           stopIdle();
           setDone(true);
           const { avg, variability } = computeTimingStats(tapTimes.current);
-          const totalErrors = errors;
           const accuracy =
-            tapTimes.current.length / (tapTimes.current.length + totalErrors);
+            tapTimes.current.length / (tapTimes.current.length + errors);
           onComplete({
             taskId: "visual",
             answerChanges: 0,
-            currentErrorStreak: totalErrors > 0 ? 1 : 0,
-            totalScore: Math.max(0, 1 - totalErrors * 0.2),
+            currentErrorStreak: errors > 0 ? 1 : 0,
+            totalScore: Math.max(0, 1 - errors * 0.2),
             accuracyRate: accuracy,
-            errors: totalErrors,
+            errors,
             idleGapsOverThreshold: gaps,
             responseTimeVariability: variability,
             completionTime: Date.now() - taskStart.current,
@@ -393,95 +511,136 @@ const VisualTask: React.FC<TaskProps> = ({ onComplete }) => {
           setRound(nextRound);
           roundAt.current = Date.now();
         }
-      }, 600);
+      }, 700);
     } else {
       tapTimes.current.push(rt);
       setErrors((n) => n + 1);
       setFeedback("wrong");
       setTimeout(() => {
         setFeedback(null);
-        roundAt.current = Date.now(); // reset RT for retry
-      }, 500);
+        roundAt.current = Date.now();
+      }, 600);
     }
   };
 
   const IMG_W = 300;
-  const IMG_H = Math.round(300 * (610 / 576)); // maintain aspect ratio ≈ 318
+  const IMG_H = Math.round(300 * (610 / 576));
+
+  const feedbackBg =
+    feedback === "correct"
+      ? C.t2Light
+      : feedback === "wrong"
+        ? "#FFF1F2"
+        : C.t2Bg;
+  const feedbackBorder =
+    feedback === "correct"
+      ? C.t2Accent
+      : feedback === "wrong"
+        ? C.wrong
+        : C.t2Accent;
 
   return (
-    <View style={s.taskCard}>
-      <View style={s.taskHeader}>
-        <View style={[s.taskBadge, { backgroundColor: "#F0FDF4" }]}>
-          <Text style={[s.taskBadgeText, { color: "#166534" }]}>🌿 Task 2</Text>
-        </View>
-        <Text style={s.taskTitle}>Find the Part!</Text>
-      </View>
-
-      {/* Round indicator */}
-      <View style={s.roundRow}>
-        {ROUNDS.map((_, i) => (
-          <View
-            key={i}
-            style={[
-              s.roundDot,
-              i < round && s.roundDotDone,
-              i === round && s.roundDotActive,
-            ]}
-          />
-        ))}
-        <Text style={s.roundLabel}>
-          Round {round + 1} of {ROUNDS.length}
-        </Text>
-      </View>
-
-      {/* Target instruction */}
+    <BounceIn>
       <View
-        style={[
-          s.targetBanner,
-          feedback === "correct" && s.targetBannerCorrect,
-          feedback === "wrong" && s.targetBannerWrong,
-        ]}
+        style={[s.taskCard, { borderTopColor: C.t2Accent, borderTopWidth: 5 }]}
       >
-        <Text style={s.targetText}>
-          {feedback === "correct"
-            ? "✅  Great job!"
-            : feedback === "wrong"
-              ? "❌  Not quite — try again!"
-              : `👉  Tap the  "${currentTarget}"`}
-        </Text>
-      </View>
+        <View style={s.taskHeader}>
+          <View style={[s.taskBadge, { backgroundColor: C.t2Light }]}>
+            <Text style={[s.taskBadgeText, { color: C.t2Accent }]}>
+              🌿 Task 2 of 3
+            </Text>
+          </View>
+          <Text style={s.taskTitle}>Find the Part!</Text>
+          <Text style={s.taskSubtitle}>
+            Look at the plant diagram and tap the right part.
+          </Text>
+        </View>
 
-      {/* Plant diagram with tap zones */}
-      <View style={[s.diagramWrap, { width: IMG_W, height: IMG_H }]}>
-        <Image
-          source={require("@/assets/images/parts-of-a-plant.png")}
-          style={{ width: IMG_W, height: IMG_H, resizeMode: "contain" }}
-        />
-        {zones.map((zone) => (
-          <Pressable
-            key={zone.label}
+        {/* Round dots */}
+        <View style={s.roundRow}>
+          {ROUNDS.map((_, i) => (
+            <View
+              key={i}
+              style={[
+                s.roundDot,
+                i < round && [s.roundDotDone, { backgroundColor: C.t2Accent }],
+                i === round && [
+                  s.roundDotActive,
+                  { backgroundColor: C.t2Accent },
+                ],
+              ]}
+            />
+          ))}
+          <Text style={s.roundLabel}>
+            Round {round + 1} of {ROUNDS.length}
+          </Text>
+        </View>
+
+        {/* Target banner */}
+        <View
+          style={[
+            s.targetBanner,
+            {
+              backgroundColor: feedbackBg,
+              borderColor: feedbackBorder,
+              borderWidth: 2,
+            },
+          ]}
+        >
+          <Text
             style={[
-              s.tapZone,
+              s.targetText,
               {
-                left: zone.left,
-                top: zone.top,
-                width: zone.width,
-                height: zone.height,
+                color:
+                  feedback === "wrong"
+                    ? C.wrong
+                    : feedback === "correct"
+                      ? C.t2Accent
+                      : C.ink,
               },
             ]}
-            onPress={() => handleTap(zone)}
           >
-            {/* Invisible tap zone — labels are already in the image */}
-          </Pressable>
-        ))}
-      </View>
+            {feedback === "correct"
+              ? "✅  Awesome! Moving to next round…"
+              : feedback === "wrong"
+                ? "❌  Oops! Try again 💪"
+                : `👉  Tap the  "${currentTarget}"`}
+          </Text>
+        </View>
 
-      {errors > 0 && (
-        <Text style={s.mistakeNote}>
-          {errors} miss{errors > 1 ? "es" : ""} so far — no worries, keep going!
-        </Text>
-      )}
-    </View>
+        {/* Diagram */}
+        <View style={[s.diagramWrap, { width: IMG_W, height: IMG_H }]}>
+          <Image
+            source={require("@/assets/images/parts-of-a-plant.png")}
+            style={{ width: IMG_W, height: IMG_H, resizeMode: "contain" }}
+          />
+          {zones.map((zone) => (
+            <Pressable
+              key={zone.label}
+              style={[
+                s.tapZone,
+                {
+                  left: zone.left,
+                  top: zone.top,
+                  width: zone.width,
+                  height: zone.height,
+                },
+              ]}
+              onPress={() => handleTap(zone)}
+            />
+          ))}
+        </View>
+
+        {errors > 0 && (
+          <View style={s.mistakePill}>
+            <Text style={s.mistakeNote}>
+              {errors} miss{errors > 1 ? "es" : ""} so far — no worries, keep
+              going! 💪
+            </Text>
+          </View>
+        )}
+      </View>
+    </BounceIn>
   );
 };
 
@@ -493,6 +652,7 @@ const SensoryTask: React.FC<TaskProps> = ({ onComplete }) => {
   const [phase, setPhase] = useState<"idle" | "waiting" | "done">("idle");
   const [round, setRound] = useState(0);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
   const taskStart = useRef(Date.now());
   const pulseAt = useRef<number | null>(null);
@@ -511,13 +671,34 @@ const SensoryTask: React.FC<TaskProps> = ({ onComplete }) => {
     [],
   );
 
+  useEffect(() => {
+    if (phase !== "waiting") return;
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.08,
+          duration: 500,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+      ]),
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [phase]);
+
   const triggerPulse = async () => {
     if (phase === "waiting") return;
     setPhase("waiting");
     setFeedback(null);
     pulseAt.current = null;
     resetIdle();
-
     const delay =
       MIN_PULSE_DELAY_MS +
       Math.random() * (MAX_PULSE_DELAY_MS - MIN_PULSE_DELAY_MS);
@@ -538,10 +719,10 @@ const SensoryTask: React.FC<TaskProps> = ({ onComplete }) => {
       const rt = Date.now() - pulseAt.current;
       if (rt >= 50) {
         reactionTimes.current.push(rt);
-        setFeedback(`⚡ ${rt} ms — nice!`);
+        setFeedback(`⚡ ${rt} ms — nice reflexes!`);
       }
     } else {
-      setFeedback("Too fast — wait for the buzz 😄");
+      setFeedback("Too fast — wait for the buzz first 😄");
     }
 
     const nextRound = round + 1;
@@ -569,62 +750,96 @@ const SensoryTask: React.FC<TaskProps> = ({ onComplete }) => {
   };
 
   return (
-    <View style={s.taskCard}>
-      <View style={s.taskHeader}>
-        <View style={[s.taskBadge, { backgroundColor: "#F5F3FF" }]}>
-          <Text style={[s.taskBadgeText, { color: "#6D28D9" }]}>📳 Task 3</Text>
+    <BounceIn>
+      <View
+        style={[s.taskCard, { borderTopColor: C.t3Accent, borderTopWidth: 5 }]}
+      >
+        <View style={s.taskHeader}>
+          <View style={[s.taskBadge, { backgroundColor: C.t3Light }]}>
+            <Text style={[s.taskBadgeText, { color: C.t3Accent }]}>
+              📳 Task 3 of 3
+            </Text>
+          </View>
+          <Text style={s.taskTitle}>Feel the Buzz!</Text>
+          <Text style={s.taskSubtitle}>
+            Tap{" "}
+            <Text style={{ fontWeight: "800", color: C.t3Accent }}>
+              ▶ Play buzz
+            </Text>
+            , wait for your phone to vibrate, then tap{" "}
+            <Text style={{ fontWeight: "800", color: C.t3Accent }}>
+              I felt it!
+            </Text>{" "}
+            🤙
+          </Text>
         </View>
-        <Text style={s.taskTitle}>Feel the Buzz!</Text>
-      </View>
 
-      <Text style={s.bodyText}>
-        Tap <Text style={s.highlight}>Play buzz</Text>, then as soon as your
-        phone vibrates — tap <Text style={s.highlight}>I felt it!</Text> 🤙
-      </Text>
+        {/* Round dots */}
+        <View style={s.roundRow}>
+          {Array.from({ length: PULSE_ROUNDS }).map((_, i) => (
+            <View
+              key={i}
+              style={[
+                s.roundDot,
+                i < round && [s.roundDotDone, { backgroundColor: C.t3Accent }],
+                i === round && [
+                  s.roundDotActive,
+                  { backgroundColor: C.t3Accent },
+                ],
+              ]}
+            />
+          ))}
+          <Text style={s.roundLabel}>
+            {phase === "done"
+              ? "All done! 🎉"
+              : `Round ${round + 1} of ${PULSE_ROUNDS}`}
+          </Text>
+        </View>
 
-      {/* Round dots */}
-      <View style={s.roundRow}>
-        {Array.from({ length: PULSE_ROUNDS }).map((_, i) => (
-          <View
-            key={i}
+        {feedback && (
+          <View style={[s.feedbackPill, { backgroundColor: C.t3Light }]}>
+            <Text style={[s.feedbackText, { color: C.t3Accent }]}>
+              {feedback}
+            </Text>
+          </View>
+        )}
+
+        {/* Big buzz button with pulse animation */}
+        <Animated.View
+          style={{
+            transform: [{ scale: phase === "waiting" ? pulseAnim : 1 }],
+          }}
+        >
+          <Pressable
             style={[
-              s.roundDot,
-              i < round && s.roundDotDone,
-              i === round && s.roundDotActive,
+              s.buzzBtn,
+              {
+                borderColor: C.t3Accent,
+                backgroundColor: phase === "waiting" ? C.t3Light : C.t3Bg,
+              },
             ]}
-          />
-        ))}
-        <Text style={s.roundLabel}>
-          {phase === "done"
-            ? "All done!"
-            : `Round ${round + 1} of ${PULSE_ROUNDS}`}
-        </Text>
+            onPress={triggerPulse}
+            disabled={phase === "waiting" || phase === "done"}
+          >
+            <Text style={[s.buzzBtnText, { color: C.t3Accent }]}>
+              {phase === "waiting" ? "🔔  Waiting for buzz…" : "▶  Play buzz"}
+            </Text>
+          </Pressable>
+        </Animated.View>
+
+        <Pressable
+          style={[
+            s.ctaBtn,
+            { backgroundColor: C.t3Accent },
+            phase !== "waiting" && s.btnDisabled,
+          ]}
+          disabled={phase !== "waiting"}
+          onPress={handleFelt}
+        >
+          <Text style={s.ctaBtnText}>I felt it! 👋</Text>
+        </Pressable>
       </View>
-
-      {feedback && (
-        <View style={s.feedbackPill}>
-          <Text style={s.feedbackText}>{feedback}</Text>
-        </View>
-      )}
-
-      <Pressable
-        style={[s.buzzBtn, phase === "waiting" && s.buzzBtnWaiting]}
-        onPress={triggerPulse}
-        disabled={phase === "waiting" || phase === "done"}
-      >
-        <Text style={s.buzzBtnText}>
-          {phase === "waiting" ? "🔔  Waiting for buzz…" : "▶  Play buzz"}
-        </Text>
-      </Pressable>
-
-      <Pressable
-        style={[s.primaryBtn, phase !== "waiting" && s.btnDisabled]}
-        disabled={phase !== "waiting"}
-        onPress={handleFelt}
-      >
-        <Text style={s.primaryBtnText}>I felt it! 👋</Text>
-      </Pressable>
-    </View>
+    </BounceIn>
   );
 };
 
@@ -634,10 +849,28 @@ const SensoryTask: React.FC<TaskProps> = ({ onComplete }) => {
 
 type TaskStep = 1 | 2 | 3;
 
-const STEP_META: Record<TaskStep, { emoji: string; label: string }> = {
-  1: { emoji: "📖", label: "Memory Check" },
-  2: { emoji: "🌿", label: "Find the Part" },
-  3: { emoji: "📳", label: "Feel the Buzz" },
+const STEP_META: Record<
+  TaskStep,
+  { emoji: string; label: string; color: string; lightColor: string }
+> = {
+  1: {
+    emoji: "📖",
+    label: "Memory Check",
+    color: C.t1Accent,
+    lightColor: C.t1Light,
+  },
+  2: {
+    emoji: "🌿",
+    label: "Find the Part",
+    color: C.t2Accent,
+    lightColor: C.t2Light,
+  },
+  3: {
+    emoji: "📳",
+    label: "Feel the Buzz",
+    color: C.t3Accent,
+    lightColor: C.t3Light,
+  },
 };
 
 const BrainSyncScreen: React.FC = () => {
@@ -645,37 +878,54 @@ const BrainSyncScreen: React.FC = () => {
   const [step, setStep] = useState<TaskStep>(1);
   const [allMetrics, setAllMetrics] = useState<TaskMetrics[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const progress = useRef(new Animated.Value(0)).current;
+  const heroScale = useRef(new Animated.Value(0.9)).current;
+  const heroOpacity = useRef(new Animated.Value(0)).current;
 
   const { setBaselineState } = useNeuroState();
   const { resetBuffer } = useAnalyticsLogger();
-  const { user, isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading, updateUser } = useAuth();
 
-  // Only allow authenticated users who still need calibration to stay on this screen.
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(heroScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 7,
+      }),
+      Animated.timing(heroOpacity, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
   useEffect(() => {
     if (isLoading) return;
-
     if (!isAuthenticated) {
       router.replace("/welcome");
       return;
     }
-
     const hasBaseline =
       (user as any)?.is_calibrated === true ||
       (user as any)?.baseline_cognitive_load != null;
-
-    if (hasBaseline) {
-      router.replace("/(tabs)");
-    }
+    if (hasBaseline) router.replace("/(tabs)");
   }, [isAuthenticated, isLoading, user]);
 
+  // Animated progress bar
+  const barAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.spring(progress, {
-      toValue: started ? (step - 1) / 3 : 0,
+    Animated.spring(barAnim, {
+      toValue: started ? step / 3 : 0,
       useNativeDriver: false,
       friction: 8,
     }).start();
-  }, [step, started, progress]);
+  }, [step, started]);
+
+  const barWidth = barAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0%", "100%"],
+  });
 
   const handleTaskComplete = useCallback(
     (metrics: TaskMetrics) => {
@@ -693,7 +943,6 @@ const BrainSyncScreen: React.FC = () => {
   const submitCalibration = async (metrics: TaskMetrics[]) => {
     setSubmitting(true);
     const summary = computeCLI(metrics);
-
     try {
       const body: neuroApi.CalibrationRequest = {
         total_time_seconds:
@@ -708,10 +957,20 @@ const BrainSyncScreen: React.FC = () => {
         overload_signal: summary.overloadSignal,
         per_task_scores: summary.perTask,
       };
-
       const response = await neuroApi.calibrate(body);
-      if (response.baseline_state)
+      if (response.baseline_state) {
         setBaselineState(response.baseline_state as any);
+      }
+
+      // Refresh the authenticated user so baseline_cognitive_load / is_calibrated
+      // are up to date in AuthContext (used by the home banner & neuro state).
+      try {
+        const freshUser = await getCurrentUser();
+        updateUser(freshUser);
+      } catch (e) {
+        console.warn("Failed to refresh user after calibration", e);
+      }
+
       resetBuffer();
       router.replace("/(tabs)");
     } catch (error: any) {
@@ -721,26 +980,6 @@ const BrainSyncScreen: React.FC = () => {
     }
   };
 
-  const progressWidth = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0%", "100%"],
-  });
-
-  // Animated fill for completed step
-  const stepProgress = useRef(new Animated.Value(step / 3)).current;
-  useEffect(() => {
-    Animated.timing(stepProgress, {
-      toValue: step / 3,
-      duration: 300,
-      useNativeDriver: false,
-    }).start();
-  }, [step]);
-
-  const barWidth = stepProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0%", "100%"],
-  });
-
   return (
     <SafeAreaView style={s.safe}>
       <ScrollView
@@ -748,69 +987,102 @@ const BrainSyncScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
         bounces={false}
       >
-        {/* Intro / Start */}
-        {!started && (
-          <>
-            <View style={s.header}>
-              <Text style={s.superTitle}>🧠 Brain Sync</Text>
-              <Text style={s.heroTitle}>Let's find your learning style!</Text>
-              <Text style={s.heroSub}>
-                3 quick activities — takes about 2 minutes. There are no wrong
-                answers, just do your best! 🌟
-              </Text>
+        {/* Hero header — always shown */}
+        <Animated.View
+          style={[
+            s.heroWrap,
+            { opacity: heroOpacity, transform: [{ scale: heroScale }] },
+          ]}
+        >
+          {/* Decorative blob */}
+          <View style={s.heroBlob} />
+
+          <Text style={s.superTitle}>🧠 Brain Sync</Text>
+          <Text style={s.heroTitle}>
+            Let's find your{"\n"}learning superpower!
+          </Text>
+          <Text style={s.heroSub}>
+            3 quick activities · ~2 minutes · No wrong answers!{" "}
+            <Text style={{ fontWeight: "800" }}>Just do your best 🌟</Text>
+          </Text>
+        </Animated.View>
+
+        {!started ? (
+          <BounceIn delay={200}>
+            {/* Feature chips */}
+            <View style={s.chipRow}>
+              {[
+                { emoji: "📖", text: "Memory" },
+                { emoji: "🌿", text: "Visual" },
+                { emoji: "📳", text: "Reflexes" },
+              ].map((chip) => (
+                <View key={chip.text} style={s.chip}>
+                  <Text style={s.chipEmoji}>{chip.emoji}</Text>
+                  <Text style={s.chipText}>{chip.text}</Text>
+                </View>
+              ))}
             </View>
-            <Pressable style={s.primaryBtn} onPress={() => setStarted(true)}>
-              <Text style={s.primaryBtnText}>Start Brain Sync</Text>
+
+            <Pressable style={s.startBtn} onPress={() => setStarted(true)}>
+              <Text style={s.startBtnText}>Let's go! 🚀</Text>
             </Pressable>
+
             <Text style={s.privacyNote}>
-              🔒 Your results are private — only used to personalise your
-              lessons.
+              🔒 Private · Only used to personalise your lessons
             </Text>
-          </>
-        )}
-
-        {/* Flow when started */}
-        {started && (
+          </BounceIn>
+        ) : (
           <>
-            {/* Header */}
-            <View style={s.header}>
-              <Text style={s.superTitle}>🧠 Brain Sync</Text>
-              <Text style={s.heroTitle}>Let's find your learning style!</Text>
-              <Text style={s.heroSub}>
-                3 quick activities — takes about 2 minutes. There are no wrong
-                answers, just do your best! 🌟
-              </Text>
-            </View>
-
-            {/* Step pills */}
-            <View style={s.pillRow}>
-              {([1, 2, 3] as TaskStep[]).map((n) => {
-                const meta = STEP_META[n];
-                const active = n === step;
-                const done = n < step;
-                return (
-                  <View
-                    key={n}
-                    style={[s.pill, active && s.pillActive, done && s.pillDone]}
-                  >
-                    <Text
+            {/* Step progress bar */}
+            <View style={s.progressSection}>
+              <View style={s.pillRow}>
+                {([1, 2, 3] as TaskStep[]).map((n) => {
+                  const meta = STEP_META[n];
+                  const active = n === step;
+                  const done = n < step;
+                  return (
+                    <View
+                      key={n}
                       style={[
-                        s.pillText,
-                        (active || done) && s.pillTextActive,
+                        s.pill,
+                        active && {
+                          borderColor: meta.color,
+                          backgroundColor: meta.lightColor,
+                        },
+                        done && {
+                          borderColor: C.correct,
+                          backgroundColor: "#DCFCE7",
+                        },
                       ]}
                     >
-                      {done ? "✓" : meta.emoji} {meta.label}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
+                      <Text
+                        style={[
+                          s.pillText,
+                          (active || done) && {
+                            color: done ? C.correct : meta.color,
+                          },
+                        ]}
+                      >
+                        {done ? "✓ " : `${meta.emoji} `}
+                        {meta.label}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
 
-            {/* Progress bar */}
-            <View style={s.progressTrack}>
-              <Animated.View style={[s.progressFill, { width: barWidth }]} />
+              <View style={s.progressTrack}>
+                <Animated.View
+                  style={[
+                    s.progressFill,
+                    { width: barWidth, backgroundColor: STEP_META[step].color },
+                  ]}
+                />
+              </View>
+              <Text style={s.progressCaption}>
+                Step {step} of 3 — You're doing great! 🎉
+              </Text>
             </View>
-            <Text style={s.progressCaption}>Step {step} of 3</Text>
 
             {/* Active task */}
             {step === 1 && <NLPTask onComplete={handleTaskComplete} />}
@@ -818,8 +1090,7 @@ const BrainSyncScreen: React.FC = () => {
             {step === 3 && <SensoryTask onComplete={handleTaskComplete} />}
 
             <Text style={s.privacyNote}>
-              🔒 Your results are private — only used to personalise your
-              lessons.
+              🔒 Private · Only used to personalise your lessons
             </Text>
           </>
         )}
@@ -828,13 +1099,20 @@ const BrainSyncScreen: React.FC = () => {
       {/* Submitting overlay */}
       {submitting && (
         <View style={s.overlay}>
-          <View style={s.overlayCard}>
-            <ActivityIndicator size="large" color="#4F46E5" />
-            <Text style={s.overlayTitle}>Syncing your brain… 🧠</Text>
-            <Text style={s.overlayBody}>
-              Setting up your personal learning profile!
-            </Text>
-          </View>
+          <BounceIn>
+            <View style={s.overlayCard}>
+              <Text style={s.overlayEmoji}>🧠</Text>
+              <ActivityIndicator
+                size="large"
+                color={C.cta}
+                style={{ marginVertical: 8 }}
+              />
+              <Text style={s.overlayTitle}>Syncing your brain…</Text>
+              <Text style={s.overlayBody}>
+                Setting up your personal learning profile!
+              </Text>
+            </View>
+          </BounceIn>
         </View>
       )}
     </SafeAreaView>
@@ -845,205 +1123,303 @@ export default BrainSyncScreen;
 export { computeCLI, scoreTask, computeTimingStats };
 
 // ─────────────────────────────────────────────────────────────
-// Styles  — warm, rounded, child-friendly palette
+// Styles
 // ─────────────────────────────────────────────────────────────
 
-const BLUE = "#4F46E5";
-const BLUE_LT = "#EEF2FF";
-const GREEN = "#16A34A";
-const GREEN_LT = "#F0FDF4";
-const GRAY = "#6B7280";
-const BORDER = "#E5E7EB";
-const WHITE = "#FFFFFF";
-const INK = "#111827";
-
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F9FAFB" },
-  scroll: { paddingHorizontal: 20, paddingBottom: 40 },
+  safe: { flex: 1, backgroundColor: C.bg },
+  scroll: { paddingHorizontal: 20, paddingBottom: 48 },
 
-  // ── Header ──
-  header: { paddingTop: 24, paddingBottom: 8 },
+  // ── Hero ──
+  heroWrap: {
+    paddingTop: 28,
+    paddingBottom: 20,
+    position: "relative",
+    overflow: "hidden",
+  },
+  heroBlob: {
+    position: "absolute",
+    top: -40,
+    right: -60,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: "#C7D2FE",
+    opacity: 0.35,
+  },
   superTitle: {
     fontSize: 13,
-    fontWeight: "700",
-    color: BLUE,
-    letterSpacing: 0.8,
+    fontWeight: "800",
+    color: C.cta,
+    letterSpacing: 1.2,
     textTransform: "uppercase",
-    marginBottom: 4,
+    marginBottom: 6,
   },
   heroTitle: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: INK,
-    lineHeight: 32,
-    marginBottom: 8,
+    fontSize: 30,
+    fontWeight: "900",
+    color: C.ink,
+    lineHeight: 36,
+    marginBottom: 10,
+    letterSpacing: -0.5,
   },
-  heroSub: { fontSize: 15, color: GRAY, lineHeight: 22 },
+  heroSub: {
+    fontSize: 15,
+    color: C.gray,
+    lineHeight: 22,
+  },
 
-  // ── Step pills ──
+  // ── Start chips ──
+  chipRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 24,
+    flexWrap: "wrap",
+  },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 24,
+    backgroundColor: C.card,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  chipEmoji: { fontSize: 18 },
+  chipText: { fontSize: 14, fontWeight: "700", color: C.ink },
+
+  // ── Start button ──
+  startBtn: {
+    backgroundColor: C.cta,
+    borderRadius: 18,
+    paddingVertical: 20,
+    alignItems: "center",
+    marginBottom: 14,
+    shadowColor: C.cta,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  startBtnText: {
+    color: C.white,
+    fontSize: 20,
+    fontWeight: "900",
+    letterSpacing: 0.3,
+  },
+
+  // ── Progress section ──
+  progressSection: { marginBottom: 16 },
   pillRow: {
     flexDirection: "row",
     gap: 8,
-    marginTop: 16,
     marginBottom: 10,
     flexWrap: "wrap",
   },
   pill: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 7,
     borderRadius: 20,
     borderWidth: 1.5,
-    borderColor: BORDER,
-    backgroundColor: WHITE,
+    borderColor: C.border,
+    backgroundColor: C.card,
   },
-  pillActive: { borderColor: BLUE, backgroundColor: BLUE_LT },
-  pillDone: { borderColor: GREEN, backgroundColor: GREEN_LT },
-  pillText: { fontSize: 12, fontWeight: "600", color: GRAY },
-  pillTextActive: { color: INK },
-
-  // ── Progress bar ──
+  pillText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: C.gray,
+  },
   progressTrack: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: BORDER,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: C.border,
     overflow: "hidden",
-    marginBottom: 4,
+    marginBottom: 5,
   },
-  progressFill: { height: "100%", borderRadius: 4, backgroundColor: BLUE },
-  progressCaption: { fontSize: 12, color: GRAY, marginBottom: 12 },
+  progressFill: { height: "100%", borderRadius: 5 },
+  progressCaption: { fontSize: 12, color: C.gray },
 
   // ── Task card ──
   taskCard: {
-    backgroundColor: WHITE,
-    borderRadius: 20,
-    padding: 20,
+    backgroundColor: C.card,
+    borderRadius: 24,
+    padding: 22,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.07,
-    shadowRadius: 10,
-    elevation: 3,
-    gap: 14,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.09,
+    shadowRadius: 14,
+    elevation: 4,
+    gap: 16,
+    marginBottom: 16,
   },
   taskHeader: { gap: 6 },
   taskBadge: {
     alignSelf: "flex-start",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 14,
   },
-  taskBadgeText: { fontSize: 12, fontWeight: "700" },
-  taskTitle: { fontSize: 20, fontWeight: "800", color: INK },
+  taskBadgeText: { fontSize: 12, fontWeight: "800", letterSpacing: 0.3 },
+  taskTitle: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: C.ink,
+    letterSpacing: -0.3,
+  },
+  taskSubtitle: { fontSize: 14, color: C.gray, lineHeight: 20 },
 
-  // ── NLP Task ──
+  // ── Sentence box ──
   sentenceBox: {
     backgroundColor: "#FFFBEB",
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: "#F59E0B",
+    borderLeftWidth: 5,
   },
-  sentenceText: { fontSize: 16, color: INK, lineHeight: 24 },
-  highlight: { fontWeight: "800", color: BLUE },
+  sentenceText: { fontSize: 16, color: C.ink, lineHeight: 26 },
+  highlight: { fontWeight: "900" },
   countdownRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginTop: 10,
+    marginTop: 12,
   },
-  countdownLabel: { fontSize: 13, color: GRAY },
-  countdownNum: { fontSize: 20, fontWeight: "800", color: "#F59E0B" },
-  questionText: { fontSize: 17, fontWeight: "700", color: INK },
+  countdownLabel: { fontSize: 13, color: C.gray },
+  countdownBubble: {
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  countdownNum: { fontSize: 16, fontWeight: "900", color: C.white },
+
+  // ── Options ──
+  questionText: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: C.ink,
+    lineHeight: 24,
+  },
   optionsCol: { gap: 10 },
   optBtn: {
-    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 16,
     paddingHorizontal: 16,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 2,
-    borderColor: BORDER,
+    borderColor: C.border,
     backgroundColor: "#FAFAFA",
+    minHeight: 56,
   },
-  optBtnSelected: { borderColor: BLUE, backgroundColor: BLUE_LT },
-  optText: { fontSize: 16, color: INK, fontWeight: "500" },
-  optTextSelected: { color: BLUE, fontWeight: "700" },
+  optBtnSelected: {},
+  optEmoji: { fontSize: 22 },
+  optText: { flex: 1, fontSize: 16, color: C.ink, fontWeight: "600" },
+  optCheck: { fontSize: 18, color: C.cta },
 
-  // ── Visual Task ──
-  roundRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  roundDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: BORDER },
-  roundDotActive: {
-    backgroundColor: BLUE,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+  // ── CTA button ──
+  ctaBtn: {
+    borderRadius: 16,
+    paddingVertical: 18,
+    alignItems: "center",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 4,
   },
-  roundDotDone: { backgroundColor: GREEN },
-  roundLabel: { fontSize: 12, color: GRAY, marginLeft: 4 },
+  ctaBtnText: {
+    color: C.white,
+    fontSize: 17,
+    fontWeight: "900",
+    letterSpacing: 0.2,
+  },
+  btnDisabled: { opacity: 0.3 },
+
+  // ── Visual task ──
+  roundRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  roundDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: C.border,
+  },
+  roundDotActive: { width: 14, height: 14, borderRadius: 7 },
+  roundDotDone: {},
+  roundLabel: { fontSize: 12, color: C.gray, marginLeft: 4 },
   targetBanner: {
-    backgroundColor: "#EFF6FF",
-    borderRadius: 10,
-    paddingVertical: 10,
+    borderRadius: 12,
+    paddingVertical: 12,
     paddingHorizontal: 14,
   },
-  targetBannerCorrect: { backgroundColor: "#F0FDF4" },
-  targetBannerWrong: { backgroundColor: "#FFF1F2" },
-  targetText: { fontSize: 15, fontWeight: "700", color: INK },
+  targetText: { fontSize: 15, fontWeight: "800" },
   diagramWrap: { alignSelf: "center", position: "relative" },
   tapZone: { position: "absolute" },
-  mistakeNote: { fontSize: 12, color: "#EF4444", fontStyle: "italic" },
-
-  // ── Sensory Task ──
-  bodyText: { fontSize: 15, color: INK, lineHeight: 22 },
-  feedbackPill: {
-    backgroundColor: "#F0FDF4",
+  mistakePill: {
+    backgroundColor: "#FFF1F2",
     borderRadius: 10,
+    paddingHorizontal: 12,
     paddingVertical: 8,
+  },
+  mistakeNote: { fontSize: 13, color: C.wrong, fontWeight: "600" },
+
+  // ── Sensory task ──
+  feedbackPill: {
+    borderRadius: 12,
+    paddingVertical: 10,
     paddingHorizontal: 14,
     alignSelf: "flex-start",
   },
-  feedbackText: { fontSize: 14, fontWeight: "700", color: GREEN },
+  feedbackText: { fontSize: 14, fontWeight: "800" },
   buzzBtn: {
-    backgroundColor: BLUE_LT,
-    borderWidth: 2,
-    borderColor: BLUE,
-    borderRadius: 14,
-    paddingVertical: 16,
+    borderWidth: 2.5,
+    borderRadius: 16,
+    paddingVertical: 20,
     alignItems: "center",
+    minHeight: 64,
+    justifyContent: "center",
   },
-  buzzBtnWaiting: { backgroundColor: "#C7D2FE" },
-  buzzBtnText: { color: BLUE, fontSize: 17, fontWeight: "800" },
-
-  // ── Shared ──
-  primaryBtn: {
-    backgroundColor: BLUE,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: "center",
-  },
-  primaryBtnText: { color: WHITE, fontSize: 17, fontWeight: "800" },
-  btnDisabled: { opacity: 0.35 },
+  buzzBtnText: { fontSize: 18, fontWeight: "900" },
 
   // ── Footer ──
   privacyNote: {
     fontSize: 12,
-    color: GRAY,
+    color: C.gray,
     textAlign: "center",
-    marginTop: 16,
+    marginTop: 8,
   },
 
-  // ── Submitting overlay ──
+  // ── Overlay ──
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.45)",
+    backgroundColor: "rgba(0,0,0,0.5)",
     alignItems: "center",
     justifyContent: "center",
   },
   overlayCard: {
-    backgroundColor: WHITE,
-    borderRadius: 20,
-    padding: 32,
+    backgroundColor: C.card,
+    borderRadius: 28,
+    padding: 36,
     alignItems: "center",
-    width: "80%",
-    gap: 12,
+    width: "82%",
+    gap: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    elevation: 10,
   },
-  overlayTitle: { fontSize: 20, fontWeight: "800", color: INK },
-  overlayBody: { fontSize: 14, color: GRAY, textAlign: "center" },
+  overlayEmoji: { fontSize: 48, marginBottom: 4 },
+  overlayTitle: { fontSize: 22, fontWeight: "900", color: C.ink },
+  overlayBody: {
+    fontSize: 14,
+    color: C.gray,
+    textAlign: "center",
+    lineHeight: 20,
+  },
 });

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * domains/types_of_magnets.ts
  */
 
@@ -8,8 +8,8 @@ import {
   drawHorseshoeMagnet,
   drawMagnetLabel,
   drawRingMagnet,
-} from "../core/shapes";
-import { fadeIn } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn } from "../../core/easing";
 
 type Ctx = any;
 

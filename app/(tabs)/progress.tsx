@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -12,12 +13,37 @@ import {
 
 import { type CognitiveTheme, Typography } from "@/constants/theme";
 import { useCognitiveTheme } from "@/hooks/use-cognitive-theme";
+import { getUserProgress, type UserProgressResponse } from "@/services/progress";
 
-const WEEKLY_ACTIVITY = [2, 4, 3, 5, 1, 4, 6]; // example sessions per day
+const WEEKLY_ACTIVITY = [2, 4, 3, 5, 1, 4, 6]; // placeholder sessions per day
 
 export default function ProgressScreen() {
   const { theme: cognitiveTheme } = useCognitiveTheme();
   const styles = useMemo(() => createStyles(cognitiveTheme), [cognitiveTheme]);
+
+  const [progress, setProgress] = useState<UserProgressResponse | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void loadProgress();
+  }, []);
+
+  const loadProgress = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await getUserProgress();
+      setProgress(data);
+    } catch (err: any) {
+      setError(
+        err?.message ||
+          "Unable to load your progress right now. Please try again.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const subjectProgress = useMemo(
     () => [
@@ -56,9 +82,29 @@ export default function ProgressScreen() {
     [cognitiveTheme],
   );
 
-  const totalLessons = 28;
-  const totalMinutes = 420;
-  const conceptsMastered = 16;
+  const totalLessons = progress?.total_lessons_created ?? 0;
+  const lessonsCompleted = progress?.lessons_completed ?? 0;
+  const avgLessonProgressPct = Math.round(
+    (progress?.avg_lesson_progress ?? 0) * 100,
+  );
+  const totalQuizzes = progress?.total_quizzes_taken ?? 0;
+  const avgQuizScore = Math.round(progress?.avg_quiz_score ?? 0);
+  const lastQuizScore =
+    typeof progress?.last_quiz_score === "number"
+      ? Math.round(progress.last_quiz_score)
+      : null;
+  const lastQuizDateLabel = progress?.last_quiz_date
+    ? new Date(progress.last_quiz_date).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+      })
+    : null;
+  const lastActiveLabel = progress?.last_active_date
+    ? new Date(progress.last_active_date).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+      })
+    : null;
 
   const maxActivity = Math.max(...WEEKLY_ACTIVITY);
 
@@ -73,6 +119,11 @@ export default function ProgressScreen() {
         <View style={styles.headerRow}>
           <View>
             <Text style={styles.headerTitle}>Your Progress</Text>
+            {lastActiveLabel && (
+              <Text style={styles.headerSubtitle}>
+                Last active: {lastActiveLabel}
+              </Text>
+            )}
           </View>
           <Pressable
             onPress={() => router.push("/settings")}
@@ -87,19 +138,41 @@ export default function ProgressScreen() {
           </Pressable>
         </View>
 
-        {/* Weekly Streak */}
+        {isLoading && (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator color={cognitiveTheme.brand.primary} />
+            <Text style={styles.loadingText}>Loading your progress...</Text>
+          </View>
+        )}
+
+        {error && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorTitle}>Couldn&apos;t load progress</Text>
+            <Text style={styles.errorMessage}>{error}</Text>
+            <Pressable style={styles.errorRetryButton} onPress={loadProgress}>
+              <Text style={styles.errorRetryLabel}>Try again</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* Weekly Summary */}
         <View style={styles.streakCard}>
           <View style={styles.streakLeft}>
             <View style={styles.streakIconCircle}>
               <Ionicons name="flame" size={22} color="#FDBA74" />
             </View>
             <View>
-              <Text style={styles.streakLabel}>Weekly streak</Text>
-              <Text style={styles.streakValue}>5 days 🔥</Text>
+              <Text style={styles.streakLabel}>Learning summary</Text>
+              <Text style={styles.streakValue}>
+                {lessonsCompleted} lesson{lessonsCompleted === 1 ? "" : "s"}{" "}
+                completed
+              </Text>
             </View>
           </View>
           <Text style={styles.streakMessage}>
-            One more day to reach your best streak.
+            You&apos;ve created {totalLessons} lesson
+            {totalLessons === 1 ? "" : "s"} and taken {totalQuizzes} quiz
+            {totalQuizzes === 1 ? "" : "zes"} so far.
           </Text>
         </View>
 
@@ -111,7 +184,7 @@ export default function ProgressScreen() {
               <View style={styles.circleMiddle}>
                 <View style={styles.circleInner}>
                   <Text style={styles.circleNumber}>{totalLessons}</Text>
-                  <Text style={styles.circleLabel}>Lessons</Text>
+                  <Text style={styles.circleLabel}>Lessons created</Text>
                 </View>
               </View>
             </View>
@@ -124,10 +197,8 @@ export default function ProgressScreen() {
                   ]}
                 />
                 <View>
-                  <Text style={styles.circleStatLabel}>Time learned</Text>
-                  <Text style={styles.circleStatValue}>
-                    {Math.round(totalMinutes / 60)} hrs
-                  </Text>
+                  <Text style={styles.circleStatLabel}>Completed</Text>
+                  <Text style={styles.circleStatValue}>{lessonsCompleted}</Text>
                 </View>
               </View>
               <View style={styles.circleStat}>
@@ -138,9 +209,9 @@ export default function ProgressScreen() {
                   ]}
                 />
                 <View>
-                  <Text style={styles.circleStatLabel}>Concepts</Text>
+                  <Text style={styles.circleStatLabel}>Avg. progress</Text>
                   <Text style={styles.circleStatValue}>
-                    {conceptsMastered} mastered
+                    {avgLessonProgressPct}%
                   </Text>
                 </View>
               </View>
@@ -174,15 +245,16 @@ export default function ProgressScreen() {
               })}
             </View>
             <Text style={styles.lineChartCaption}>
-              You completed {totalLessons} lessons this week. Amazing focus!
+              You&apos;ve completed {lessonsCompleted} of {totalLessons} lessons
+              so far.
             </Text>
           </View>
         </View>
 
-        {/* Learning Style Breakdown */}
+        {/* Quiz Performance */}
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Learning style breakdown</Text>
+            <Text style={styles.sectionTitle}>Quiz performance</Text>
           </View>
           <View style={styles.breakdownRow}>
             <View style={styles.pieWrapper}>
@@ -190,8 +262,12 @@ export default function ProgressScreen() {
               <View style={[styles.pieSlice, styles.pieSliceVisual]} />
               <View style={[styles.pieSlice, styles.pieSliceAudio]} />
               <View style={styles.pieCenter}>
-                <Text style={styles.pieCenterLabel}>Balanced</Text>
-                <Text style={styles.pieCenterValue}>You use all three</Text>
+                <Text style={styles.pieCenterLabel}>
+                  Avg score {avgQuizScore}%
+                </Text>
+                <Text style={styles.pieCenterValue}>
+                  {totalQuizzes} quiz{totalQuizzes === 1 ? "" : "zes"} taken
+                </Text>
               </View>
             </View>
             <View style={styles.breakdownLegend}>
@@ -202,7 +278,9 @@ export default function ProgressScreen() {
                     { backgroundColor: cognitiveTheme.brand.primary },
                   ]}
                 />
-                <Text style={styles.legendLabel}>Visual · 40%</Text>
+                <Text style={styles.legendLabel}>
+                  Total quizzes · {totalQuizzes}
+                </Text>
               </View>
               <View style={styles.breakdownLegendItem}>
                 <View
@@ -211,7 +289,9 @@ export default function ProgressScreen() {
                     { backgroundColor: cognitiveTheme.brand.accent },
                   ]}
                 />
-                <Text style={styles.legendLabel}>Audio · 35%</Text>
+                <Text style={styles.legendLabel}>
+                  Average score · {avgQuizScore}%
+                </Text>
               </View>
               <View style={styles.breakdownLegendItem}>
                 <View
@@ -220,10 +300,17 @@ export default function ProgressScreen() {
                     { backgroundColor: cognitiveTheme.brand.secondary },
                   ]}
                 />
-                <Text style={styles.legendLabel}>Haptic · 25%</Text>
+                <Text style={styles.legendLabel}>
+                  Last quiz ·{" "}
+                  {lastQuizScore != null
+                    ? `${lastQuizScore}%${
+                        lastQuizDateLabel ? ` · ${lastQuizDateLabel}` : ""
+                      }`
+                    : "No quiz yet"}
+                </Text>
               </View>
               <Text style={styles.breakdownCaption}>
-                Mixing styles helps your brain build stronger connections.
+                Keep your quiz scores above 70% to reinforce mastery.
               </Text>
             </View>
           </View>

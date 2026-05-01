@@ -1,4 +1,4 @@
-import {
+﻿import {
   C,
   drawEye,
   drawLightRay,
@@ -6,8 +6,8 @@ import {
   drawObjectCard,
   drawSol,
   drawArrowLine,
-} from "../core/shapes";
-import { fadeIn, lerp, clamp01, easeOut } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn, lerp, clamp01, easeOut } from "../../core/easing";
 
 type Ctx = any;
 

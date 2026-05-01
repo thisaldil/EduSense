@@ -15,11 +15,6 @@ import {
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 
-import Voice, {
-  SpeechResultsEvent,
-  SpeechErrorEvent,
-} from "@react-native-voice/voice";
-
 import { Colors, Typography } from "@/constants/theme";
 import { createLesson } from "@/services/lessons";
 import { analyzeNoteImage } from "@/services/vision";
@@ -29,6 +24,20 @@ const generateSessionId = () =>
 
 const isWeb = Platform.OS === "web";
 let webRecognition: any | null = null;
+
+// Dynamically load native voice module so Expo Go (which does not bundle it)
+// does not crash when this screen is imported.
+let NativeVoice: any = null;
+
+if (!isWeb) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const voiceModule = require("@react-native-voice/voice");
+    NativeVoice = voiceModule.default ?? voiceModule;
+  } catch {
+    NativeVoice = null;
+  }
+}
 
 function inferLessonMetaFromText(content: string): {
   title: string;
@@ -73,30 +82,30 @@ export default function NewLessonScreen() {
   const maxChars = 2000;
 
   React.useEffect(() => {
-    if (isWeb) {
+    if (isWeb || !NativeVoice) {
       // Voice is not supported on web; we use Web Speech API instead.
       return;
     }
 
-    Voice.onSpeechStart = () => {
+    NativeVoice.onSpeechStart = () => {
       setIsRecording(true);
     };
 
-    Voice.onSpeechResults = (event: SpeechResultsEvent) => {
+    NativeVoice.onSpeechResults = (event: any) => {
       const value = event.value?.[0] ?? "";
       setText((prev) => (prev ? `${prev} ${value}` : value));
     };
 
-    Voice.onSpeechEnd = () => {
+    NativeVoice.onSpeechEnd = () => {
       setIsRecording(false);
     };
 
-    Voice.onSpeechError = (_event: SpeechErrorEvent) => {
+    NativeVoice.onSpeechError = (_event: any) => {
       setIsRecording(false);
     };
 
     return () => {
-      Voice.destroy().then(Voice.removeAllListeners).catch(() => {});
+      NativeVoice.destroy().then(NativeVoice.removeAllListeners).catch(() => {});
     };
   }, []);
 
@@ -140,8 +149,16 @@ export default function NewLessonScreen() {
       return;
     }
 
+    if (!NativeVoice) {
+      Alert.alert(
+        "Speech not available",
+        "Voice input is not supported in this build.",
+      );
+      return;
+    }
+
     try {
-      await Voice.start("en-US");
+      await NativeVoice.start("en-US");
     } catch {
       setIsRecording(false);
     }
@@ -162,7 +179,9 @@ export default function NewLessonScreen() {
     }
 
     try {
-      await Voice.stop();
+      if (NativeVoice) {
+        await NativeVoice.stop();
+      }
     } catch {
       // ignore
     } finally {

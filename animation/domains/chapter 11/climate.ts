@@ -1,4 +1,4 @@
-import {
+﻿import {
   drawClimateMap,
   drawGlobe,
   drawCalendarBar,
@@ -6,8 +6,8 @@ import {
   drawThermometer,
   drawMonsoonCloud,
   drawStableArrow,
-} from "../core/shapes";
-import { fadeIn } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn } from "../../core/easing";
 
 type Ctx = any;
 

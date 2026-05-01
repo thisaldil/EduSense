@@ -3,10 +3,12 @@ import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   ImageBackground,
   Platform,
   Pressable,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
   Text,
@@ -18,6 +20,12 @@ import { Image } from "expo-image";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNeuroState } from "@/context/NeuroStateContext";
 import { useCognitiveTheme } from "@/hooks/use-cognitive-theme";
+import {
+  getUserLessons,
+  getUserQuizResultsHistory,
+  LessonResponse,
+  QuizResultResponse,
+} from "@/services/lessons";
 
 type Subject = "Physics" | "Biology" | "Cognition" | "Skills";
 
@@ -98,6 +106,12 @@ export default function HomeScreen() {
   const { state: neuroState } = useNeuroState();
   const { theme: cognitiveTheme } = useCognitiveTheme();
 
+  const [recentLessons, setRecentLessons] = useState<LessonResponse[]>([]);
+  const [recentQuizResults, setRecentQuizResults] = useState<QuizResultResponse[]>([]);
+  const [dashboardLoading, setDashboardLoading] = useState<boolean>(true);
+  const [dashboardRefreshing, setDashboardRefreshing] = useState<boolean>(false);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
+
   const needsCalibration =
     (user as any)?.is_calibrated !== true &&
     (user as any)?.baseline_cognitive_load == null;
@@ -116,6 +130,40 @@ export default function HomeScreen() {
       return () => clearTimeout(timer);
     }
   }, [isAuthenticated, isLoading]);
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      void loadDashboard();
+    }
+  }, [isLoading, isAuthenticated]);
+
+  const loadDashboard = async (opts?: { refreshing?: boolean }) => {
+    const isRefreshing = opts?.refreshing === true;
+    if (isRefreshing) {
+      setDashboardRefreshing(true);
+    } else {
+      setDashboardLoading(true);
+    }
+    setDashboardError(null);
+    try {
+      const [lessons, quizResults] = await Promise.all([
+        getUserLessons({ skip: 0, limit: 10 }),
+        getUserQuizResultsHistory({ skip: 0, limit: 10 }),
+      ]);
+      setRecentLessons(lessons);
+      setRecentQuizResults(quizResults);
+    } catch (err: any) {
+      const message =
+        err?.message || "Unable to load your dashboard. Please try again.";
+      setDashboardError(message);
+    } finally {
+      if (isRefreshing) {
+        setDashboardRefreshing(false);
+      } else {
+        setDashboardLoading(false);
+      }
+    }
+  };
 
   if (isLoading || !isAuthenticated) {
     return null;
@@ -229,14 +277,17 @@ export default function HomeScreen() {
     );
   };
 
-  const neuroLabel =
-    neuroState.currentState === "LOW_LOAD"
+  const neuroLabel = needsCalibration
+    ? "Not calibrated yet"
+    : neuroState.currentState === "LOW_LOAD"
       ? "Low · Deep Dive"
       : neuroState.currentState === "OVERLOAD"
         ? "High · Simplified"
         : "Optimal · Balanced";
 
-  const neuroColor = cognitiveTheme.brand.tabBadge;
+  const neuroColor = needsCalibration
+    ? cognitiveTheme.semantic.textSecondary
+    : cognitiveTheme.brand.tabBadge;
 
   return (
     <SafeAreaView className="flex-1 bg-brand-background">
@@ -244,6 +295,13 @@ export default function HomeScreen() {
         className="flex-1"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 40 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={dashboardRefreshing}
+            onRefresh={() => loadDashboard({ refreshing: true })}
+            tintColor={cognitiveTheme.brand.primary}
+          />
+        }
       >
         {/* Header */}
         <View className="flex-row justify-between items-center px-5 pt-4 pb-5">
@@ -292,6 +350,42 @@ export default function HomeScreen() {
             />
           </Pressable>
         </View>
+
+        {/* Dashboard loader & error */}
+        {dashboardLoading && (
+          <View className="mt-6 px-5">
+            <View className="rounded-2xl bg-brand-surface px-4 py-5 flex-row items-center gap-3">
+              <ActivityIndicator color={cognitiveTheme.brand.primary} />
+              <View className="flex-1">
+                <Text className="font-sans-semibold text-sm text-brand-text">
+                  Loading your learning dashboard...
+                </Text>
+                <Text className="text-xs text-brand-text-secondary mt-1">
+                  Fetching your recent lessons and quiz progress.
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {dashboardError && !dashboardLoading && (
+          <View className="mt-4 px-5">
+            <View className="rounded-2xl bg-red-50 border border-red-200 px-4 py-3">
+              <Text className="font-sans-semibold text-sm text-red-800">
+                Couldn&apos;t load your dashboard
+              </Text>
+              <Text className="text-xs text-red-700 mt-1">{dashboardError}</Text>
+              <Pressable
+                className="mt-2 self-start rounded-full bg-red-600 px-3 py-1.5"
+                onPress={() => loadDashboard()}
+              >
+                <Text className="text-xs font-sans-semibold text-white">
+                  Try again
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
 
         {/* New user calibration banner */}
         {needsCalibration && (
@@ -378,11 +472,11 @@ export default function HomeScreen() {
           </ImageBackground>
         </Pressable>
 
-        {/* Continue Learning */}
+        {/* Recent Lessons */}
         <View className="mt-8">
           <View className="flex-row justify-between items-center px-5 mb-4">
             <Text className="font-sans-semibold text-xl text-brand-text">
-              Continue Learning 📚
+              Recent Lessons 📚
             </Text>
             <Pressable hitSlop={10} onPress={() => router.push("/progress")}>
               <Text
@@ -394,35 +488,180 @@ export default function HomeScreen() {
             </Pressable>
           </View>
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingHorizontal: 20, gap: 16 }}
-          >
-            {CONTINUE_LESSONS.map((lesson) => (
-              <View key={lesson.id}>
-                {renderContinueCard({ item: lesson })}
+          {recentLessons.length === 0 && !dashboardLoading ? (
+            <View className="px-5">
+              <View className="rounded-2xl bg-brand-surface-secondary/60 px-4 py-4">
+                <Text className="text-sm font-sans-semibold text-brand-text">
+                  No lessons yet
+                </Text>
+                <Text className="text-xs text-brand-text-secondary mt-1">
+                  Start your first lesson to see it appear here.
+                </Text>
               </View>
-            ))}
-          </ScrollView>
+            </View>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: 20, gap: 16 }}
+            >
+              {recentLessons.map((lesson) => {
+                const createdDate = new Date(lesson.created_at);
+                const createdLabel = createdDate.toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                });
+                const subject =
+                  (["Physics", "Biology", "Cognition", "Skills"] as const).includes(
+                    lesson.subject as any,
+                  )
+                    ? (lesson.subject as Subject)
+                    : "Skills";
+                const progressPercent = Math.round((lesson.progress ?? 0) * 100);
+                return (
+                  <Pressable
+                    key={lesson.id}
+                    onPress={() => handleLessonPress(lesson as any)}
+                    className="w-[280px] rounded-[20px] bg-brand-surface p-4 flex-row gap-3.5 shadow-md"
+                    style={({ pressed }) => ({
+                      transform: [{ scale: pressed ? 0.96 : 1 }],
+                    })}
+                  >
+                    <View
+                      className="w-16 h-16 rounded-[20px] items-center justify-center"
+                      style={{ backgroundColor: SUBJECT_COLORS[subject] }}
+                    >
+                      <Ionicons
+                        name={SUBJECT_ICONS[subject]}
+                        size={32}
+                        color={cognitiveTheme.brand.primary}
+                      />
+                    </View>
+
+                    <View className="flex-1 justify-between">
+                      <Text
+                        className="font-sans-medium text-base text-brand-text"
+                        numberOfLines={2}
+                      >
+                        {lesson.title}
+                      </Text>
+
+                      <View className="flex-row mt-1 items-center justify-between">
+                        <View className="bg-brand-surface-secondary px-2.5 py-1 rounded-xl">
+                          <Text className="text-xs font-sans-medium text-deep-blue">
+                            {lesson.subject}
+                          </Text>
+                        </View>
+                        <Text className="text-[11px] text-brand-text-secondary">
+                          {createdLabel}
+                        </Text>
+                      </View>
+
+                      <View className="flex-row items-center gap-2.5 mt-2">
+                        <View className="flex-1 h-2 rounded bg-brand-surface-secondary overflow-hidden">
+                          <View
+                            className="h-full bg-teal rounded"
+                            style={{ width: `${progressPercent}%` }}
+                          />
+                        </View>
+                        <Text className="text-xs font-sans-semibold text-brand-text-secondary">
+                          {progressPercent}%
+                        </Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          )}
         </View>
 
-        {/* Recommended */}
+        {/* Recent Quiz Results */}
         <View className="mt-8">
           <View className="flex-row justify-between items-center px-5 mb-4">
             <Text className="font-sans-semibold text-xl text-brand-text">
-              Recommended for You ⭐
+              Recent Quiz Results 🧠
             </Text>
           </View>
 
-          <FlatList
-            data={RECOMMENDED_LESSONS}
-            keyExtractor={(item) => item.id}
-            numColumns={2}
-            scrollEnabled={false}
-            columnWrapperStyle={{ paddingHorizontal: 20, gap: 16 }}
-            renderItem={renderRecommendedCard}
-          />
+          {recentQuizResults.length === 0 && !dashboardLoading ? (
+            <View className="px-5">
+              <View className="rounded-2xl bg-brand-surface-secondary/60 px-4 py-4">
+                <Text className="text-sm font-sans-semibold text-brand-text">
+                  No quiz attempts yet
+                </Text>
+                <Text className="text-xs text-brand-text-secondary mt-1">
+                  Complete a quiz after a lesson to see your results here.
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <FlatList
+              data={recentQuizResults}
+              keyExtractor={(item) => item.id}
+              scrollEnabled={false}
+              contentContainerStyle={{ paddingHorizontal: 20, gap: 12 }}
+              renderItem={({ item }) => {
+                const completedDate = new Date(item.completed_at);
+                const completedLabel = completedDate.toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+                const rawScore = item.score ?? 0;
+                const derivedFromCount =
+                  item.total_questions > 0
+                    ? (item.correct_count / item.total_questions) * 100
+                    : 0;
+                const percentage =
+                  rawScore <= 1 ? rawScore * 100 : Math.max(rawScore, derivedFromCount);
+                const cl = item.cognitive_load;
+                const cognitiveLabel =
+                  typeof cl === "number"
+                    ? cl === 0
+                      ? "Low"
+                      : cl === 1
+                        ? "Medium"
+                        : "High"
+                    : cl || null;
+                return (
+                  <View className="mb-3 rounded-2xl bg-brand-surface px-4 py-4 shadow">
+                    <View className="flex-row justify-between items-center mb-1.5">
+                      <Text className="font-sans-semibold text-sm text-brand-text">
+                        Quiz score
+                      </Text>
+                      <Text className="text-xs text-brand-text-secondary">
+                        {completedLabel}
+                      </Text>
+                    </View>
+                    <View className="flex-row items-baseline gap-2 mb-1">
+                      <Text className="text-2xl font-sans-semibold text-brand-text">
+                        {Math.round(percentage)}%
+                      </Text>
+                      <Text className="text-xs text-brand-text-secondary">
+                        {item.correct_count} / {item.total_questions} correct
+                      </Text>
+                    </View>
+                    {cognitiveLabel && (
+                      <View className="mt-1 flex-row items-center gap-2">
+                        <View className="px-2.5 py-1 rounded-full bg-brand-surface-secondary">
+                          <Text className="text-[11px] font-sans-semibold text-brand-text-secondary">
+                            Cognitive load: {cognitiveLabel}
+                          </Text>
+                        </View>
+                        {typeof item.cognitive_load_confidence === "number" && (
+                          <Text className="text-[11px] text-brand-text-secondary">
+                            Confidence {Math.round(item.cognitive_load_confidence * 100)}%
+                          </Text>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                );
+              }}
+            />
+          )}
         </View>
 
         {/* Dev: Sunny visual test route */}
@@ -442,6 +681,7 @@ export default function HomeScreen() {
             </Text>
           </Pressable>
         </View>
+
       </ScrollView>
     </SafeAreaView>
   );

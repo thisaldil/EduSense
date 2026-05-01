@@ -1,9 +1,14 @@
 import { useEffect, useRef } from "react";
 import type { animationApi } from "@/services/api";
 import type { SensoryOverlay } from "@/types/sensory";
+import {
+  enrichedScriptToSensoryOverlay,
+  type EnrichedAnimationScript,
+} from "@/types/sensory";
 import { sensoryClient } from "@/services/sensoryClient";
 import { sensoryManager } from "@/services/sensoryManager";
 import { useSensoryStore } from "@/store/sensoryStore";
+import { audioClient } from "@/services/audioClient";
 
 type NeuroAdaptiveAnimationScript = animationApi.NeuroAdaptiveAnimationScript;
 
@@ -11,7 +16,7 @@ export type UseSensoryParams = {
   lessonId: string;
   studentId?: string;
   sessionId?: string;
-  script: NeuroAdaptiveAnimationScript | null;
+  script: NeuroAdaptiveAnimationScript | EnrichedAnimationScript | null;
   cognitiveState: string;
   animationClock: { currentTimeMs: number; isPlaying: boolean };
 };
@@ -34,9 +39,11 @@ export function useSensory({
     }
   }, [cognitiveState, currentState]);
 
-  // Fetch overlay when script or cognitive state changes
+  // Fetch overlay when script or cognitive state changes.
+  // Prefer enriched script (POST /api/sensory/enrich-script response): build overlay from scene.audio and scene.haptics.
+  // Fallback: if script has no sensory, try legacy GET overlay for backward compat; otherwise no sensory.
   useEffect(() => {
-    const fetchOverlay = async () => {
+    const applyOverlay = async () => {
       if (!script) {
         overlayRef.current = undefined;
         sensoryManager.setOverlay(undefined);
@@ -44,9 +51,19 @@ export function useSensory({
         return;
       }
 
+      const enriched = script as EnrichedAnimationScript;
+      if (enriched.sensory) {
+        const overlay = enrichedScriptToSensoryOverlay(enriched);
+        if (overlay) {
+          overlayRef.current = overlay;
+          sensoryManager.setOverlay(overlay);
+          return;
+        }
+      }
+
       try {
         const overlay = await sensoryClient.getOverlay({
-          script,
+          script: script as NeuroAdaptiveAnimationScript,
           cognitive_state: cognitiveState as
             | "OVERLOAD"
             | "OPTIMAL"
@@ -65,7 +82,7 @@ export function useSensory({
       }
     };
 
-    fetchOverlay();
+    applyOverlay();
   }, [script, cognitiveState, lessonId, studentId, sessionId]);
 
   // Attach session context
@@ -79,7 +96,12 @@ export function useSensory({
 
   // Drive manager from the animation clock
   useEffect(() => {
-    if (!animationClock.isPlaying) return;
+    if (!animationClock.isPlaying) {
+      // When the learner pauses or the animation stops, immediately stop
+      // any in-flight narration so audio does not continue over later scenes.
+      audioClient.stopNarration();
+      return;
+    }
     sensoryManager.onTick(animationClock.currentTimeMs);
   }, [animationClock.currentTimeMs, animationClock.isPlaying]);
 

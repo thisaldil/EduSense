@@ -1,12 +1,12 @@
-import {
+﻿import {
   drawCube,
   drawWaterDrop,
   drawBolt,
   drawLightRay,
   drawSoundWaveArcs,
   drawBalanceScale,
-} from "../core/shapes";
-import { fadeIn } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn } from "../../core/easing";
 
 type Ctx = any;
 

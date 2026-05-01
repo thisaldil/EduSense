@@ -1,4 +1,4 @@
-/**
+﻿/**
  * domains/electricity_daily_life.ts
  */
 
@@ -9,8 +9,8 @@ import {
   drawHouseOutline,
   drawPowerLine,
   drawTVSilhouette,
-} from "../core/shapes";
-import { fadeIn } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn } from "../../core/easing";
 
 type Ctx = any;
 

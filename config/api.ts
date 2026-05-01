@@ -39,7 +39,7 @@ const getApiBaseUrl = (): string => {
       // - Physical device: Use your computer's local IP address
       // Change this to your local IP if testing on a physical device
       // Find your IP: ifconfig | grep "inet " | grep -v 127.0.0.1
-      return "http://192.168.1.166:8000"; // Update this to your local IP for physical devices
+      return "http://192.168.0.73:8000"; // Update this to your local IP for physical devices
       // return "http://10.0.2.2:8000"; // Use this for Android Emulator
     }
     // Default for web or unknown platforms
@@ -63,11 +63,13 @@ export const API_ENDPOINTS = {
   LESSONS: "/api/lessons",
   CONTENT: "/api/content",
   QUIZZES: "/api/quizzes",
+  QUIZ_RESULTS: "/api/quizzes/results",
   PROGRESS: "/api/progress",
   UPLOADS: "/api/uploads",
   ACTIVITIES: "/api/activities",
   ANIMATION_NEURO_ADAPTIVE: "/api/animation/neuro-adaptive",
   SENSORY_OVERLAY: "/api/sensory/overlay",
+  SENSORY_ENRICH_SCRIPT: "/api/sensory/enrich-script",
   TTS_SYNTHESIZE: "/api/tts/synthesize",
   VISION_NOTES_ANALYZE: "/api/vision/notes/analyze",
 } as const;

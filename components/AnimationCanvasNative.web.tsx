@@ -1,102 +1,131 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 
-import { AnimationEngine } from "@/visual";
-import { exampleUsage } from "@/animation/scriptGenerator";
+import { normalizeScript } from "../animation/scriptNormalizer";
+import { AnimationEngine } from "../visual";
 
 type Props = {
-  /** Whether the animation should currently be playing */
   isPlaying: boolean;
-  /** Engine-ready script from backend. Falls back to exampleUsage() if not provided. */
   script?: any | null;
+  currentTimeMs?: number;
 };
 
-/**
- * Web-specific implementation of the animation canvas.
- * Uses a regular HTML <canvas> and the same AnimationEngine as the original React web app.
- */
-export function AnimationCanvasNative({ isPlaying, script }: Props) {
+const LOGICAL_WIDTH = 800;
+const LOGICAL_HEIGHT = 600;
+
+export function AnimationCanvasNative({
+  isPlaying,
+  script,
+  currentTimeMs,
+}: Props) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<AnimationEngine | null>(null);
-  const scriptRef = useRef<any>(script ?? exampleUsage());
 
-  // Keep scriptRef in sync with latest prop
-  useEffect(() => {
-    if (script) {
-      scriptRef.current = script;
+  const normalizedScript = useMemo(
+    () => (script ? normalizeScript(script) : null),
+    [script],
+  );
+
+  const scriptWithoutTextActors = useMemo(() => {
+    if (!normalizedScript) return null;
+    try {
+      return {
+        ...normalizedScript,
+        scenes: (normalizedScript.scenes || []).map((scene: any) => ({
+          ...scene,
+          actors: (scene.actors || []).filter(
+            (actor: any) => actor && !actor.text,
+          ),
+        })),
+      };
+    } catch {
+      return normalizedScript;
     }
-  }, [script]);
+  }, [normalizedScript]);
 
-  // Initialize engine once when the canvas is ready
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const host = hostRef.current;
+    if (!canvas || !host) return;
+
+    const resizeCanvas = () => {
+      const rect = host.getBoundingClientRect();
+      const width = Math.max(320, Math.round(rect.width || LOGICAL_WIDTH));
+      const height = Math.max(
+        220,
+        Math.round(rect.height || LOGICAL_HEIGHT * 0.5),
+      );
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      canvas.width = Math.round(LOGICAL_WIDTH * dpr);
+      canvas.height = Math.round(LOGICAL_HEIGHT * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      engineRef.current?.setSize(LOGICAL_WIDTH, LOGICAL_HEIGHT);
+    };
+
+    resizeCanvas();
+
+    const observer = new ResizeObserver(() => resizeCanvas());
+    observer.observe(host);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !scriptWithoutTextActors) {
+      engineRef.current?.dispose();
+      engineRef.current = null;
+      return;
+    }
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Use fixed coordinate space expected by AnimationEngine (matches native/WebView).
-    const W = 800;
-    const H = 600;
-    canvas.width = W;
-    canvas.height = H;
-
+    engineRef.current?.dispose();
     const engine = new AnimationEngine(
       ctx as any,
-      W,
-      H,
-      scriptRef.current,
+      LOGICAL_WIDTH,
+      LOGICAL_HEIGHT,
+      scriptWithoutTextActors as any,
+      scriptWithoutTextActors.concept || scriptWithoutTextActors.title || "",
     );
     engineRef.current = engine;
-    engine.draw?.();
+    // Start from t=0; playback / seeking is handled in a separate effect.
+    engine.seek(0);
 
     return () => {
-      engine.pause?.();
+      engine.dispose();
     };
-  }, []);
+  }, [scriptWithoutTextActors]);
 
-  // Play / pause based on prop
   useEffect(() => {
     const engine = engineRef.current;
     if (!engine) return;
+    // If an external clock is provided, drive the engine via seek().
+    // Otherwise, fall back to the engine's internal play/pause loop.
+    if (currentTimeMs != null) {
+      engine.seek(currentTimeMs);
+      return;
+    }
     if (isPlaying) {
       engine.play();
     } else {
       engine.pause();
     }
-  }, [isPlaying]);
-
-  // When a NEW script arrives, swap it into the existing engine and reset playback.
-  useEffect(() => {
-    if (!script) return;
-    const engine = engineRef.current;
-    scriptRef.current = script;
-    if (!engine) return;
-
-    (engine as any).script = script;
-    (engine as any).currentTime = 0;
-    (engine as any).reset?.();
-
-    if (isPlaying) {
-      engine.play();
-    } else {
-      engine.draw?.();
-    }
-  }, [script, isPlaying]);
+  }, [currentTimeMs, isPlaying]);
 
   return (
     <View style={styles.container}>
-      <canvas
-        ref={canvasRef}
-        width={800}
-        height={600}
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "block",
-          background: "linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%)",
-        }}
-      />
+      <div ref={hostRef as any} style={styles.host as any}>
+        <canvas ref={canvasRef} style={styles.canvas as any} />
+      </div>
     </View>
   );
 }
@@ -104,8 +133,18 @@ export function AnimationCanvasNative({ isPlaying, script }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    borderRadius: 24,
+    borderRadius: 20,
     overflow: "hidden",
-    backgroundColor: "#000000",
+    backgroundColor: "#0F172A",
+  },
+  host: {
+    width: "100%",
+    height: "100%",
+    position: "relative",
+  },
+  canvas: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#0F172A",
   },
 });

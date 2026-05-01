@@ -173,7 +173,7 @@ export const clearStoredAuth = async (): Promise<void> => {
  */
 export const apiRequest = async <T = any>(
   endpoint: string,
-  options: RequestInit = {},
+  options: RequestInit & { suppress404?: boolean } = {},
 ): Promise<T> => {
   const token = await getStoredToken();
 
@@ -188,6 +188,7 @@ export const apiRequest = async <T = any>(
   }
 
   const url = `${API_BASE_URL}${endpoint}`;
+  const suppress404 = options.suppress404 === true;
 
   try {
     const response = await fetch(url, {
@@ -204,8 +205,16 @@ export const apiRequest = async <T = any>(
 
     if (!response.ok) {
       // In dev, log the full error response so you can see why the backend rejected the request
-      if (typeof __DEV__ !== "undefined" && __DEV__) {
-        console.warn(`[API] ${response.status} ${response.statusText}`, url, data);
+      if (
+        typeof __DEV__ !== "undefined" &&
+        __DEV__ &&
+        !(suppress404 && response.status === 404)
+      ) {
+        console.warn(
+          `[API] ${response.status} ${response.statusText}`,
+          url,
+          data,
+        );
       }
       // Clear auth only when an authenticated request gets 401 (expired/invalid token).
       // Do NOT clear on 401 from login/register – that just means wrong credentials.
@@ -237,11 +246,21 @@ export const apiRequest = async <T = any>(
   }
 };
 
+export interface ApiGetOptions {
+  suppress404?: boolean;
+}
+
 /**
  * GET request
  */
-export const apiGet = <T = any>(endpoint: string): Promise<T> => {
-  return apiRequest<T>(endpoint, { method: "GET" });
+export const apiGet = <T = any>(
+  endpoint: string,
+  options?: ApiGetOptions,
+): Promise<T> => {
+  return apiRequest<T>(endpoint, {
+    method: "GET",
+    ...(options?.suppress404 ? { suppress404: true } : {}),
+  });
 };
 
 /**
@@ -404,7 +423,10 @@ export namespace animationApi {
     const endpoint = `/api/animation/neuro-adaptive/latest?${search.toString()}`;
 
     try {
-      return await apiGet<NeuroAdaptiveAnimationResponse>(endpoint);
+      // 404 here just means "no cached script yet" – suppress logging.
+      return await apiGet<NeuroAdaptiveAnimationResponse>(endpoint, {
+        suppress404: true,
+      });
     } catch (err: any) {
       if (err?.status === 404) {
         return null;
@@ -412,6 +434,82 @@ export namespace animationApi {
       throw err;
     }
   };
+}
+
+/**
+ * Sensory enrich-script API
+ * POST /api/sensory/enrich-script – takes a visual script and returns it with
+ * per-scene audio (narration) and haptics added. All times in ms from animation start.
+ */
+export namespace sensoryEnrichApi {
+  export type CognitiveState = "OVERLOAD" | "OPTIMAL" | "LOW_LOAD";
+
+  /** Narration item: at (ms), duration (ms), text; timeline optional. */
+  export interface EnrichNarrationItem {
+    at: number;
+    duration: number;
+    text: string;
+    timeline?: unknown;
+  }
+
+  /** Haptic timeline entry: at (ms), action (e.g. "start"), duration optional. */
+  export interface EnrichHapticTimelineEntry {
+    at: number;
+    action: string;
+    duration?: number;
+  }
+
+  /** Per-scene haptic: id, pattern, intensity 0–1, channel optional, timeline. */
+  export interface EnrichSceneHaptic {
+    id: string;
+    pattern: string;
+    intensity?: number;
+    channel?: string;
+    timeline: EnrichHapticTimelineEntry[];
+  }
+
+  /** Per-scene audio from enrich response. */
+  export interface EnrichSceneAudio {
+    narration: EnrichNarrationItem[];
+    effects?: unknown[];
+  }
+
+  /** Top-level sensory metadata on enriched script. */
+  export interface EnrichSensoryMeta {
+    cognitive_state: string;
+    ambient_mode?: "silence" | "40hz_gamma" | "spatial_music";
+    speech_rate?: "slow" | "normal" | "fast";
+  }
+
+  /** Scene with optional audio and haptics (enriched). */
+  export interface EnrichedScene extends animationApi.NeuroAdaptiveScene {
+    audio?: EnrichSceneAudio;
+    haptics?: EnrichSceneHaptic[];
+  }
+
+  /** Enriched script: same as visual script plus sensory and per-scene audio/haptics. */
+  export interface EnrichedAnimationScript
+    extends animationApi.NeuroAdaptiveAnimationScript {
+    sensory?: EnrichSensoryMeta;
+    scenes: EnrichedScene[];
+  }
+
+  export interface EnrichScriptRequest {
+    script: animationApi.NeuroAdaptiveAnimationScript;
+    cognitive_state?: CognitiveState;
+  }
+
+  /** Response body is the enriched script (same shape with sensory + scene.audio/haptics). */
+  export interface EnrichScriptResponse extends EnrichedAnimationScript {}
+
+  /**
+   * POST /api/sensory/enrich-script
+   * Enrich a visual script with per-scene narration and haptics. On failure, caller should fall back to visual-only playback.
+   */
+  export const enrichScript = (
+    body: EnrichScriptRequest,
+  ): Promise<EnrichScriptResponse> =>
+    apiPost<EnrichScriptResponse>(API_ENDPOINTS.SENSORY_ENRICH_SCRIPT, body);
 }
 
 /**

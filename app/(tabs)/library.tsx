@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   Pressable,
   SafeAreaView,
@@ -14,6 +15,8 @@ import {
 
 import { type CognitiveTheme, Typography } from "@/constants/theme";
 import { useCognitiveTheme } from "@/hooks/use-cognitive-theme";
+import { getUserLessons, type LessonResponse } from "@/services/lessons";
+import { useAuth } from "@/contexts/AuthContext";
 
 type SensoryMode = "Visual" | "Audio" | "Haptic";
 
@@ -49,95 +52,73 @@ const DIFFICULTY_COLORS: Record<Lesson["difficulty"], string> = {
   Advanced: "#EF4444",
 };
 
-const FILTER_CHIPS = [
-  "All",
-  "Physics",
-  "Chemistry",
-  "Biology",
-  "Math",
-  "Saved",
-] as const;
-
-type FilterChip = (typeof FILTER_CHIPS)[number];
-
-const LESSONS: Lesson[] = [
-  {
-    id: "1",
-    title: "Newton's Laws of Motion",
-    subject: "Physics",
-    description:
-      "Understand the basics of force and motion with interactive examples.",
-    durationMinutes: 15,
-    difficulty: "Beginner",
-    modes: ["Visual", "Haptic"],
-    isBookmarked: true,
-  },
-  {
-    id: "2",
-    title: "Periodic Table Trends",
-    subject: "Chemistry",
-    description:
-      "Explore atomic radius, ionization energy, and electronegativity.",
-    durationMinutes: 22,
-    difficulty: "Intermediate",
-    modes: ["Audio", "Visual"],
-  },
-  {
-    id: "3",
-    title: "Plant Photosynthesis",
-    subject: "Biology",
-    description:
-      "A visual journey through converting light into chemical energy.",
-    durationMinutes: 10,
-    difficulty: "Beginner",
-    modes: ["Visual", "Haptic", "Audio"],
-    isBookmarked: true,
-  },
-  {
-    id: "4",
-    title: "Calculus: Limits",
-    subject: "Math",
-    description:
-      "Master the concept of limits and continuity with haptic graphs.",
-    durationMinutes: 35,
-    difficulty: "Advanced",
-    modes: ["Haptic"],
-  },
-];
-
 type ViewMode = "list" | "grid";
 
 export default function LibraryScreen() {
   const { theme: cognitiveTheme } = useCognitiveTheme();
   const styles = useMemo(() => createStyles(cognitiveTheme), [cognitiveTheme]);
 
+  const { isAuthenticated } = useAuth();
+
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedFilter, setSelectedFilter] = useState<FilterChip>("All");
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [lessons, setLessons] = useState<LessonResponse[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    void loadLessons();
+  }, [isAuthenticated]);
+
+  const loadLessons = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await getUserLessons({ skip: 0, limit: 50 });
+      setLessons(data);
+    } catch (err: any) {
+      setError(
+        err?.message ||
+          "Unable to load your lessons right now. Please try again.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const filteredLessons = useMemo(() => {
-    return LESSONS.filter((lesson) => {
-      if (selectedFilter === "Saved" && !lesson.isBookmarked) {
-        return false;
-      }
+    const mapped: Lesson[] = lessons.map((lesson) => {
+      const subject =
+        (["Physics", "Chemistry", "Biology", "Math"] as const).includes(
+          lesson.subject as any,
+        )
+          ? (lesson.subject as any)
+          : "Biology";
+      const difficulty: Lesson["difficulty"] = "Beginner";
+      const durationMinutes = 10;
+      const modes: SensoryMode[] = ["Visual"];
+      return {
+        id: lesson.id,
+        title: lesson.title,
+        subject,
+        description: lesson.content,
+        durationMinutes,
+        difficulty,
+        modes,
+      };
+    });
 
-      if (
-        selectedFilter !== "All" &&
-        selectedFilter !== "Saved" &&
-        lesson.subject !== selectedFilter
-      ) {
-        return false;
-      }
+    if (!searchQuery.trim()) return mapped;
 
-      if (!searchQuery.trim()) return true;
-
-      const query = searchQuery.toLowerCase();
+    const query = searchQuery.toLowerCase();
+    return mapped.filter((lesson) => {
       return (
         lesson.title.toLowerCase().includes(query) ||
         lesson.description.toLowerCase().includes(query)
       );
     });
-  }, [searchQuery, selectedFilter]);
+  }, [lessons, searchQuery]);
 
   const renderLessonCard = ({ item }: { item: Lesson }) => (
     <View style={[styles.card, viewMode === "grid" && styles.cardGrid]}>
@@ -263,34 +244,8 @@ export default function LibraryScreen() {
           </Pressable>
         </View>
 
-        {/* Filters + View Toggle */}
+        {/* View Toggle */}
         <View style={styles.filtersRow}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipsRow}
-          >
-            {FILTER_CHIPS.map((chip) => {
-              const isActive = selectedFilter === chip;
-              return (
-                <Pressable
-                  key={chip}
-                  style={[styles.chip, isActive && styles.chipActive]}
-                  onPress={() => setSelectedFilter(chip)}
-                >
-                  <Text
-                    style={[
-                      styles.chipLabel,
-                      isActive && styles.chipLabelActive,
-                    ]}
-                  >
-                    {chip}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-
           <View style={styles.viewToggleGroup}>
             <Pressable
               style={[
@@ -332,25 +287,55 @@ export default function LibraryScreen() {
         {/* Lessons List */}
         <View style={styles.listHeaderRow}>
           <Text style={styles.listHeaderText}>
-            Showing {filteredLessons.length} lessons
+            {isLoading
+              ? "Loading your lessons..."
+              : `Showing ${filteredLessons.length} lesson${
+                  filteredLessons.length === 1 ? "" : "s"
+                }`}
           </Text>
         </View>
 
-        <FlatList
-          data={filteredLessons}
-          keyExtractor={(item) => item.id}
-          key={viewMode}
-          numColumns={viewMode === "grid" ? 2 : 1}
-          columnWrapperStyle={
-            viewMode === "grid" ? styles.gridColumnWrapper : undefined
-          }
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
-          renderItem={renderLessonCard}
-        />
+        {error && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorTitle}>Couldn&apos;t load lessons</Text>
+            <Text style={styles.errorMessage}>{error}</Text>
+            <Pressable style={styles.errorRetryButton} onPress={loadLessons}>
+              <Text style={styles.errorRetryLabel}>Try again</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {isLoading && !error ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator color={cognitiveTheme.brand.primary} />
+          </View>
+        ) : filteredLessons.length === 0 && !error ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyTitle}>No lessons yet</Text>
+            <Text style={styles.emptyMessage}>
+              When you create or complete lessons, they will appear here.
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredLessons}
+            keyExtractor={(item) => item.id}
+            key={viewMode}
+            numColumns={viewMode === "grid" ? 2 : 1}
+            columnWrapperStyle={
+              viewMode === "grid" ? styles.gridColumnWrapper : undefined
+            }
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContent}
+            renderItem={renderLessonCard}
+          />
+        )}
 
         {/* Floating Action Button */}
-        <Pressable style={styles.fab}>
+        <Pressable
+          style={styles.fab}
+          onPress={() => router.push("/lessons/new-lesson")}
+        >
           <Ionicons name="add" size={24} color="#FFFFFF" />
         </Pressable>
       </View>
@@ -416,32 +401,9 @@ const createStyles = (theme: CognitiveTheme) =>
   filtersRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     marginTop: 16,
     marginBottom: 8,
-  },
-  chipsRow: {
-    paddingRight: 12,
-    gap: 8,
-  },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.semantic.border,
-    backgroundColor: theme.semantic.background,
-  },
-  chipActive: {
-    backgroundColor: `${theme.brand.primary}10`,
-    borderColor: theme.brand.primary,
-  },
-  chipLabel: {
-    ...Typography.small,
-    color: theme.semantic.textSecondary,
-  },
-  chipLabelActive: {
-    color: theme.brand.primary,
   },
   viewToggleGroup: {
     flexDirection: "row",
@@ -581,5 +543,59 @@ const createStyles = (theme: CognitiveTheme) =>
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
+  },
+  loadingBox: {
+    marginTop: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyBox: {
+    marginTop: 16,
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: `${theme.semantic.background}CC`,
+    borderWidth: 1,
+    borderColor: theme.semantic.border,
+  },
+  emptyTitle: {
+    ...Typography.bodyMedium,
+    color: theme.semantic.text,
+    marginBottom: 4,
+  },
+  emptyMessage: {
+    ...Typography.small,
+    color: theme.semantic.textSecondary,
+  },
+  errorBox: {
+    marginTop: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+  },
+  errorTitle: {
+    ...Typography.bodyMedium,
+    color: "#B91C1C",
+    marginBottom: 4,
+  },
+  errorMessage: {
+    ...Typography.small,
+    color: "#7F1D1D",
+    marginBottom: 8,
+  },
+  errorRetryButton: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "#DC2626",
+  },
+  errorRetryLabel: {
+    ...Typography.small,
+    color: "#FFFFFF",
+    fontFamily: "Inter_600SemiBold",
   },
 });

@@ -1,12 +1,12 @@
-import {
+﻿import {
   C,
   drawLightRay,
   drawMirrorLine,
   drawNormalLine,
   drawAngleArc,
   drawSpark,
-} from "../core/shapes";
-import { fadeIn } from "../core/easing";
+} from "../../core/shapes";
+import { fadeIn } from "../../core/easing";
 
 type Ctx = any;
 

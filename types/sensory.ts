@@ -1,4 +1,8 @@
-import type { animationApi } from "@/services/api";
+import type { animationApi, sensoryEnrichApi } from "@/services/api";
+
+// Re-export enriched script type for consumers
+export type EnrichedAnimationScript =
+  sensoryEnrichApi.EnrichedAnimationScript;
 
 // Backend wire types (shape of /api/sensory/overlay response)
 export type BackendHapticCue = {
@@ -96,6 +100,63 @@ export function mapBackendOverlayToSensoryOverlay(
     haptics,
     narration,
     researchMetrics: backend.research_metrics ?? {},
+  };
+}
+
+/**
+ * Build SensoryOverlay from an enriched script (POST /api/sensory/enrich-script response).
+ * Flattens scene.audio.narration and scene.haptics (timeline entries with action === "start")
+ * into narration[] and haptics[] with atMs from animation start. Use this for playback
+ * so narration and haptics stay in sync with the animation timeline.
+ */
+export function enrichedScriptToSensoryOverlay(
+  script: EnrichedAnimationScript,
+): SensoryOverlay | null {
+  const sensory = script.sensory;
+  if (!sensory) return null;
+
+  const narration: NarrationCue[] = [];
+  const haptics: HapticCue[] = [];
+  const scenes = script.scenes ?? [];
+
+  for (const scene of scenes) {
+    const sceneId = scene.id;
+    if (scene.audio?.narration) {
+      for (let i = 0; i < scene.audio.narration.length; i++) {
+        const n = scene.audio.narration[i];
+        narration.push({
+          id: `narration:${sceneId}:${i}:${n.at}`,
+          atMs: n.at,
+          text: n.text,
+          durationMs: n.duration ?? 0,
+        });
+      }
+    }
+    if (scene.haptics) {
+      for (const h of scene.haptics) {
+        for (const t of h.timeline ?? []) {
+          if (t.action === "start") {
+            haptics.push({
+              id: `${h.id}:${t.at}`,
+              atMs: t.at,
+              pattern: h.pattern,
+              sceneId,
+              channel: h.channel,
+              intensity: h.intensity,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    cognitiveState: sensory.cognitive_state ?? "OPTIMAL",
+    ambientMode: sensory.ambient_mode ?? "silence",
+    speechRate: sensory.speech_rate ?? "normal",
+    haptics,
+    narration,
+    researchMetrics: {},
   };
 }
 

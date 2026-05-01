@@ -74,30 +74,24 @@ function AppShell() {
             options={{ headerShown: false }}
           />
           <Stack.Screen name="welcome" options={{ headerShown: false }} />
-          <Stack.Screen
-            name="auth/signup"
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name="auth/signin"
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen name="(tabs)" options={{ headerShown: true }} />
+          <Stack.Screen name="auth/signup" options={{ headerShown: false }} />
+          <Stack.Screen name="auth/signin" options={{ headerShown: false }} />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen
             name="calibration/index"
             options={{ headerShown: false, title: "Brain Sync" }}
           />
           <Stack.Screen
             name="calibration/task-reading"
-            options={{ headerShown: true, title: "Reading Center" }}
+            options={{ headerShown: false, title: "Reading Center" }}
           />
           <Stack.Screen
             name="calibration/task-visual"
-            options={{ headerShown: true, title: "Visual Lab" }}
+            options={{ headerShown: false, title: "Visual Lab" }}
           />
           <Stack.Screen
             name="calibration/task-pulse"
-            options={{ headerShown: true, title: "Pulse Match" }}
+            options={{ headerShown: false, title: "Pulse Match" }}
           />
           <Stack.Screen
             name="lessons/new-lesson"
@@ -114,11 +108,11 @@ function AppShell() {
           />
           <Stack.Screen
             name="lessons/quiz-review"
-            options={{ headerShown: true }}
+            options={{ headerShown: false }}
           />
           <Stack.Screen
             name="lessons/quiz-loading"
-            options={{ headerShown: true }}
+            options={{ headerShown: false }}
           />
           <Stack.Screen
             name="lessons/concept-explore"
@@ -126,14 +120,14 @@ function AppShell() {
           />
           <Stack.Screen
             name="lessons/concept-playground"
-            options={{ headerShown: true }}
+            options={{ headerShown: false }}
           />
           <Stack.Screen
             name="lessons/processing"
             options={{ headerShown: false }}
           />
-          <Stack.Screen name="settings" options={{ headerShown: true }} />
-          <Stack.Screen name="edit-profile" options={{ headerShown: true }} />
+          <Stack.Screen name="settings" options={{ headerShown: false }} />
+          <Stack.Screen name="edit-profile" options={{ headerShown: false }} />
           <Stack.Screen
             name="modal"
             options={{ presentation: "modal", title: "Modal" }}
@@ -149,7 +143,6 @@ function AppShell() {
 }
 
 export default function RootLayout() {
-
   const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,

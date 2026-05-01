@@ -12,20 +12,17 @@ import {
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { AnimationCanvasNative } from "@/components/AnimationCanvasNative";
-import { animationApi } from "@/services/api";
-import {
-  generateQuiz,
-  getLatestTransmutedContent,
-} from "@/services/lessons";
+import { animationApi, sensoryEnrichApi } from "@/services/api";
+import { generateQuiz, getLatestTransmutedContent } from "@/services/lessons";
 import { useNeuroState } from "@/context/NeuroStateContext";
 import { useAnalyticsLogger } from "@/context/AnalyticsLoggerContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSensory } from "@/hooks/useSensory";
 import { BiometricBanner } from "@/components/sensory/BiometricBanner";
 import { SensoryToggle } from "@/components/sensory/SensoryToggle";
-import { SensoryDebugOverlay } from "@/components/sensory/SensoryDebugOverlay";
 
 type AnimationScript = animationApi.NeuroAdaptiveAnimationScript;
+type EnrichedScript = sensoryEnrichApi.EnrichedAnimationScript;
 type Scene = AnimationScript["scenes"][0];
 
 // ─── State config ──────────────────────────────────────────────────────────
@@ -178,14 +175,9 @@ const thumbSt = StyleSheet.create({
     padding: 10,
     borderRadius: 12,
     backgroundColor: "#FFFFFF",
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: "#E2E8F0",
     marginRight: 10,
-    shadowColor: "#000",
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
   },
   cardActive: {
     borderColor: "#2563EB",
@@ -219,7 +211,7 @@ const thumbSt = StyleSheet.create({
     backgroundColor: "#2563EB",
   },
   text: {
-    fontSize: 11,
+    fontSize: 12,
     color: "#475569",
     lineHeight: 15,
     fontWeight: "500",
@@ -418,6 +410,35 @@ export function LessonAnimationPanel({
   const listRef = useRef<FlatList>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Playback script: visual script enriched with sensory (narration + haptics). Fallback to visual-only if enrich fails.
+  const [playbackScript, setPlaybackScript] = useState<
+    AnimationScript | EnrichedScript | null
+  >(null);
+
+  // When we have a visual script, enrich it before playback; use result as single source of truth for animation + audio + haptics.
+  useEffect(() => {
+    if (!script) {
+      setPlaybackScript(null);
+      return;
+    }
+    setPlaybackScript(script);
+    const cognitiveStateWire = cognitiveState as
+      | "OVERLOAD"
+      | "OPTIMAL"
+      | "LOW_LOAD";
+    sensoryEnrichApi
+      .enrichScript({
+        script,
+        cognitive_state: cognitiveStateWire,
+      })
+      .then((enriched) => {
+        setPlaybackScript(enriched);
+      })
+      .catch(() => {
+        // Fallback: keep visual-only script; no narration/haptics
+      });
+  }, [script, cognitiveState]);
+
   // Reset on new script
   useEffect(() => {
     setIsPlaying(false);
@@ -425,12 +446,12 @@ export function LessonAnimationPanel({
     setActiveSceneIdx(0);
   }, [script]);
 
-  // Member 3 – Sensory overlay (haptics + audio) driven by the same clock
+  // Member 3 – Sensory overlay (haptics + audio) driven by the same clock; uses enriched script when available.
   useSensory({
     lessonId: lessonId ?? "",
     studentId,
     sessionId: sessionId ?? undefined,
-    script,
+    script: playbackScript,
     cognitiveState,
     animationClock: {
       currentTimeMs: currentTime,
@@ -441,12 +462,14 @@ export function LessonAnimationPanel({
   // Ticker
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
-    if (!script || !isPlaying) return;
+    if (!playbackScript || !isPlaying) return;
+
+    const step = 100 * speedFactor;
 
     intervalRef.current = setInterval(() => {
       setCurrentTime((t) => {
-        const next = Math.min(script.duration, t + 100);
-        const idx = script.scenes.findIndex(
+        const next = Math.min(playbackScript.duration, t + step);
+        const idx = playbackScript.scenes.findIndex(
           (s) => next >= s.startTime && next < s.startTime + s.duration,
         );
         if (idx !== -1 && idx !== activeSceneIdx) {
@@ -459,7 +482,7 @@ export function LessonAnimationPanel({
             });
           } catch {}
         }
-        if (next >= script.duration) setIsPlaying(false);
+        if (next >= playbackScript.duration) setIsPlaying(false);
         return next;
       });
     }, 100);
@@ -467,12 +490,12 @@ export function LessonAnimationPanel({
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [script, isPlaying, activeSceneIdx]);
+  }, [playbackScript, isPlaying, activeSceneIdx]);
 
   const jumpToScene = (idx: number) => {
-    if (!script) return;
+    if (!playbackScript) return;
     setActiveSceneIdx(idx);
-    setCurrentTime(script.scenes[idx].startTime + 500);
+    setCurrentTime(playbackScript.scenes[idx].startTime);
     try {
       listRef.current?.scrollToIndex({
         index: idx,
@@ -482,37 +505,39 @@ export function LessonAnimationPanel({
     } catch {}
   };
 
-  const progress = script
-    ? Math.min(100, (currentTime / script.duration) * 100)
+  const progress = playbackScript
+    ? Math.min(100, (currentTime / playbackScript.duration) * 100)
     : 0;
   const formatTime = (ms: number) => {
     const s = Math.floor(ms / 1000);
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   };
 
-  const currentScene = script?.scenes[activeSceneIdx] ?? null;
+  const currentScene = playbackScript?.scenes[activeSceneIdx] ?? null;
   const stateConf =
     STATE_CONFIG[cognitiveState as keyof typeof STATE_CONFIG] ??
     STATE_CONFIG.OVERLOAD;
-  const speedLabel =
+
+  const speedFactor =
     cognitiveState === "OVERLOAD"
-      ? "0.4×"
+      ? 0.4
       : cognitiveState === "OPTIMAL"
-        ? "0.75×"
-        : "1.2×";
+        ? 0.75
+        : 1.2;
+  const speedLabel = `${speedFactor.toFixed(2)}×`;
 
   return (
     <View style={panelSt.root}>
       {/* ── Header row ── */}
-      {script && (
+      {playbackScript && (
         <View style={panelSt.headerRow}>
           <BiometricBanner />
           <Text style={panelSt.titleText} numberOfLines={1}>
-            {script.title || "Animation"}
+            {playbackScript.title || "Animation"}
           </Text>
           <View style={panelSt.timerBox}>
             <Text style={panelSt.timerText}>
-              {formatTime(currentTime)} / {formatTime(script.duration)}
+              {formatTime(currentTime)} / {formatTime(playbackScript.duration)}
             </Text>
           </View>
         </View>
@@ -555,28 +580,16 @@ export function LessonAnimationPanel({
 
         {script && !error && (
           <>
-            <AnimationCanvasNative isPlaying={isPlaying} script={script} />
-            {/* Dev-only overlay for Member 3 cues */}
-            <SensoryDebugOverlay />
+            <AnimationCanvasNative
+              isPlaying={isPlaying}
+              script={playbackScript}
+              currentTimeMs={currentTime}
+            />
           </>
         )}
 
-        {/* Scene label overlay */}
-        {script && !loading && !error && currentScene?.text && (
-          <View style={panelSt.sceneOverlay} pointerEvents="none">
-            <View style={panelSt.sceneNumPill}>
-              <Text style={panelSt.sceneNumText}>
-                {activeSceneIdx + 1}/{script.scenes.length}
-              </Text>
-            </View>
-            <Text style={panelSt.sceneOverlayText} numberOfLines={1}>
-              {currentScene.text}
-            </Text>
-          </View>
-        )}
-
         {/* Bottom progress bar */}
-        {script && (
+        {playbackScript && (
           <View style={panelSt.progressBar}>
             <View
               style={[panelSt.progressFill, { width: `${progress}%` as any }]}
@@ -585,8 +598,22 @@ export function LessonAnimationPanel({
         )}
       </View>
 
+      {/* ── Scene narration (OUTSIDE canvas, below it) ── */}
+      {playbackScript && !loading && !error && currentScene?.text && (
+        <View style={panelSt.sceneNarration}>
+          <View style={panelSt.sceneNumPill}>
+            <Text style={panelSt.sceneNumText}>
+              {activeSceneIdx + 1}/{playbackScript.scenes.length}
+            </Text>
+          </View>
+          <Text style={panelSt.sceneNarrationText}>
+            {currentScene.text}
+          </Text>
+        </View>
+      )}
+
       {/* ── Controls ── */}
-      {script && (
+      {playbackScript && (
         <View style={panelSt.controls}>
           <Pressable
             style={[panelSt.btn, isPlaying && panelSt.btnActive]}
@@ -594,7 +621,7 @@ export function LessonAnimationPanel({
               if (isPlaying) {
                 setIsPlaying(false);
               } else {
-                if (currentTime >= (script.duration ?? 0)) setCurrentTime(0);
+                if (currentTime >= (playbackScript.duration ?? 0)) setCurrentTime(0);
                 setIsPlaying(true);
               }
             }}
@@ -622,10 +649,10 @@ export function LessonAnimationPanel({
       )}
 
       {/* ── Neuro equation ── */}
-      {script && <NeuroEquation cognitiveState={cognitiveState} />}
+      {playbackScript && <NeuroEquation cognitiveState={cognitiveState} />}
 
       {/* ── Scene thumbnail strip ── */}
-      {script && script.scenes.length > 0 && (
+      {playbackScript && playbackScript.scenes.length > 0 && (
         <View style={panelSt.stripWrap}>
           <View style={panelSt.stripHead}>
             <Text style={panelSt.stripTitle}>SCENES</Text>
@@ -635,7 +662,7 @@ export function LessonAnimationPanel({
           </View>
           <FlatList
             ref={listRef}
-            data={script.scenes}
+            data={playbackScript.scenes}
             horizontal
             keyExtractor={(_, i) => String(i)}
             showsHorizontalScrollIndicator={false}
@@ -667,8 +694,8 @@ const panelSt = StyleSheet.create({
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 2,
+    justifyContent: "space-between",
+    paddingHorizontal: 4,
   },
   stateBadge: {
     flexDirection: "row",
@@ -681,7 +708,7 @@ const panelSt = StyleSheet.create({
   },
   stateDot: { width: 7, height: 7, borderRadius: 3.5 },
   stateLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 0.5 },
-  titleText: { flex: 1, fontSize: 13, fontWeight: "700", color: "#1E293B" },
+  titleText: { flex: 1, fontSize: 16, fontWeight: "700", color: "#1F2937" },
   timerBox: {
     backgroundColor: "#F1F5F9",
     borderRadius: 8,
@@ -693,16 +720,11 @@ const panelSt = StyleSheet.create({
   canvasWrap: {
     width: "100%",
     height: 260,
-    borderRadius: 18,
+    borderRadius: 20,
     overflow: "hidden",
-    backgroundColor: "#F8FAFF",
-    borderWidth: 1.5,
-    borderColor: "#DBEAFE",
-    shadowColor: "#2563EB",
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    backgroundColor: "#0F172A",
+    borderWidth: 1,
+    borderColor: "#0F172A",
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -752,39 +774,42 @@ const panelSt = StyleSheet.create({
     textAlign: "center",
   },
 
-  sceneOverlay: {
-    position: "absolute",
-    bottom: 12,
-    left: 12,
-    right: 12,
+  sceneNarration: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    backgroundColor: "rgba(255,255,255,0.90)",
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    zIndex: 5,
+    gap: 10,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderWidth: 1,
-    borderColor: "rgba(37,99,235,0.15)",
+    borderColor: "#E2E8F0",
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   sceneNumPill: {
     backgroundColor: "#2563EB",
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    minWidth: 32,
+    alignItems: "center",
   },
   sceneNumText: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: "800",
     color: "#FFFFFF",
     letterSpacing: 0.5,
   },
-  sceneOverlayText: {
+  sceneNarrationText: {
     flex: 1,
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "600",
     color: "#1E293B",
+    lineHeight: 20,
   },
 
   progressBar: {
@@ -1016,7 +1041,10 @@ export default function LessonPlayerScreen() {
         {/* Test yourself */}
         <View style={screenSt.footer}>
           <Pressable
-            style={[screenSt.nextBtn, isGeneratingQuiz && screenSt.nextBtnDisabled]}
+            style={[
+              screenSt.nextBtn,
+              isGeneratingQuiz && screenSt.nextBtnDisabled,
+            ]}
             onPress={handleTestYourself}
             disabled={!params.lesson_id || isGeneratingQuiz}
           >

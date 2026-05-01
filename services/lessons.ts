@@ -18,6 +18,7 @@ export interface Lesson {
   title: string;
   subject: string;
   content: string;
+  baseline_cognitive_load?: string | null;
   concepts: any[];
   visuals: any[];
   progress: number;
@@ -102,6 +103,67 @@ export interface QuizResults {
   cognitive_load_confidence?: number;
   cognitive_load_scores?: CognitiveLoadScores;
 }
+
+/**
+ * Dashboard-specific list types, matching backend responses.
+ */
+export type LessonResponse = Lesson;
+
+export interface QuizResultResponse {
+  id: string;
+  quiz_id: string;
+  user_id: string;
+  score: number;
+  correct_count: number;
+  total_questions: number;
+  completed_at: string;
+  cognitive_load?: string | number | null;
+  cognitive_load_confidence?: number | null;
+}
+
+export interface ListParams {
+  skip?: number;
+  limit?: number;
+}
+
+/**
+ * List current user's lessons for dashboard.
+ * GET /api/lessons?skip=0&limit=20
+ */
+export const getUserLessons = async (
+  params: ListParams = {},
+): Promise<LessonResponse[]> => {
+  const search = new URLSearchParams();
+  if (typeof params.skip === "number") {
+    search.set("skip", String(params.skip));
+  }
+  if (typeof params.limit === "number") {
+    search.set("limit", String(params.limit));
+  }
+  const query = search.toString();
+  const endpoint = query ? `${API_ENDPOINTS.LESSONS}?${query}` : API_ENDPOINTS.LESSONS;
+  return apiGet<LessonResponse[]>(endpoint);
+};
+
+/**
+ * List current user's quiz results for dashboard.
+ * GET /api/quizzes/results?skip=0&limit=20
+ */
+export const getUserQuizResultsHistory = async (
+  params: ListParams = {},
+): Promise<QuizResultResponse[]> => {
+  const search = new URLSearchParams();
+  if (typeof params.skip === "number") {
+    search.set("skip", String(params.skip));
+  }
+  if (typeof params.limit === "number") {
+    search.set("limit", String(params.limit));
+  }
+  const query = search.toString();
+  const base = API_ENDPOINTS.QUIZ_RESULTS;
+  const endpoint = query ? `${base}?${query}` : base;
+  return apiGet<QuizResultResponse[]>(endpoint);
+};
 
 /**
  * Create a new lesson
