@@ -11,8 +11,44 @@ export type SpeechRate = "slow" | "normal" | "fast";
 
 const loops: Record<string, InstanceType<typeof Audio.Sound> | null> = {};
 let currentNarrationSound: InstanceType<typeof Audio.Sound> | null = null;
-/** On web we use a blob URL; revoke when done. */
+/** On web we use a blob URL for the active sound (prefetch blobs are not revoked here). */
 let currentNarrationBlobUrl: string | null = null;
+/** If false, blob URL is owned by narration prefetch cache — do not revoke on stop/finish. */
+let narrationBlobDisposable = true;
+
+/** RIFF…WAVE — detect WAV regardless of mis-set Content-Type. */
+function isWavBytes(buffer: ArrayBuffer): boolean {
+  if (buffer.byteLength < 12) return false;
+  const u = new Uint8Array(buffer, 0, 12);
+  return (
+    u[0] === 0x52 &&
+    u[1] === 0x49 &&
+    u[2] === 0x46 &&
+    u[3] === 0x46 &&
+    u[8] === 0x57 &&
+    u[9] === 0x41 &&
+    u[10] === 0x56 &&
+    u[11] === 0x45
+  );
+}
+
+function playbackMimeType(response: Response, buffer: ArrayBuffer): string {
+  if (isWavBytes(buffer)) return "audio/wav";
+  const ct = response.headers
+    .get("Content-Type")
+    ?.split(";")[0]
+    ?.trim()
+    .toLowerCase();
+  if (ct?.includes("wav") || ct === "audio/x-wav" || ct === "audio/wave") {
+    return "audio/wav";
+  }
+  if (ct?.includes("mpeg") || ct?.includes("mp3")) return "audio/mpeg";
+  return "audio/mpeg";
+}
+
+function extensionForMime(mime: string): string {
+  return mime === "audio/wav" ? "wav" : "mp3";
+}
 
 /** Encode ArrayBuffer to base64 (works in RN without btoa polyfill). */
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -34,8 +70,8 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 
 export const audioClient = {
   /**
-   * Play narration using backend TTS (POST /api/tts/synthesize).
-   * Uses cue.text and overlay.speech_rate; plays returned MP3 with expo-av.
+   * Play narration using backend TTS only (POST /api/tts/synthesize).
+   * Response may be audio/wav (local XTTS) or audio/mpeg (e.g. Edge fallback); never device TTS.
    */
   async playNarrationFromBackend(
     text: string,
@@ -70,19 +106,21 @@ export const audioClient = {
       }
 
       const arrayBuffer = await response.arrayBuffer();
+      const mime = playbackMimeType(response, arrayBuffer);
       let fileUri: string;
 
       if (Platform.OS === "web") {
         // Web: no cache directory; use blob URL for playback.
-        const blob = new Blob([arrayBuffer], { type: "audio/mpeg" });
+        const blob = new Blob([arrayBuffer], { type: mime });
         const blobUrl = URL.createObjectURL(blob);
+        narrationBlobDisposable = true;
         currentNarrationBlobUrl = blobUrl;
         fileUri = blobUrl;
       } else {
         const cacheDir = FileSystem.cacheDirectory;
         if (!cacheDir) throw new Error("No cache directory");
         const base64 = arrayBufferToBase64(arrayBuffer);
-        const filename = `tts_${Date.now()}.mp3`;
+        const filename = `tts_${Date.now()}.${extensionForMime(mime)}`;
         fileUri = `${cacheDir}${filename}`;
         await FileSystem.writeAsStringAsync(fileUri, base64, {
           encoding: FileSystem.EncodingType.Base64,
@@ -103,10 +141,11 @@ export const audioClient = {
         ) {
           sound.unloadAsync().then(() => {
             currentNarrationSound = null;
-            if (currentNarrationBlobUrl) {
+            if (currentNarrationBlobUrl && narrationBlobDisposable) {
               URL.revokeObjectURL(currentNarrationBlobUrl);
-              currentNarrationBlobUrl = null;
             }
+            currentNarrationBlobUrl = null;
+            narrationBlobDisposable = true;
             if (Platform.OS !== "web" && fileUri?.startsWith("file")) {
               try {
                 FileSystem.deleteAsync(fileUri, { idempotent: true });
@@ -123,13 +162,66 @@ export const audioClient = {
   },
 
   /**
+   * Prefetched file:// or blob: URI (same bytes as POST body). Does not revoke blobs or delete
+   * files on finish — cache clears them via clearPrefetchedNarrationCache.
+   */
+  async playNarrationFromUri(
+    uri: string,
+    onDone?: () => void,
+  ): Promise<void> {
+    if (!uri?.trim()) {
+      onDone?.();
+      return;
+    }
+    await this.stopNarration();
+
+    try {
+      if (uri.startsWith("blob:")) {
+        narrationBlobDisposable = false;
+        currentNarrationBlobUrl = uri;
+      } else {
+        narrationBlobDisposable = true;
+      }
+
+      const { sound } = await Audio.Sound.createAsync(
+        { uri },
+        { shouldPlay: true },
+      );
+      currentNarrationSound = sound;
+
+      sound.setOnPlaybackStatusUpdate((status: {
+        isLoaded: boolean;
+        didJustFinish?: boolean;
+        isLooping?: boolean;
+      }) => {
+        if (
+          status.isLoaded &&
+          status.didJustFinish &&
+          !status.isLooping
+        ) {
+          sound.unloadAsync().then(() => {
+            currentNarrationSound = null;
+            currentNarrationBlobUrl = null;
+            narrationBlobDisposable = true;
+            onDone?.();
+          });
+        }
+      });
+    } catch (err) {
+      console.warn("[audioClient] playNarrationFromUri error", err);
+      onDone?.();
+    }
+  },
+
+  /**
    * Stop and unload current narration (backend TTS). Call on unmount.
    */
   async stopNarration(): Promise<void> {
-    if (currentNarrationBlobUrl) {
+    if (currentNarrationBlobUrl && narrationBlobDisposable) {
       URL.revokeObjectURL(currentNarrationBlobUrl);
-      currentNarrationBlobUrl = null;
     }
+    currentNarrationBlobUrl = null;
+    narrationBlobDisposable = true;
     if (currentNarrationSound) {
       try {
         await currentNarrationSound.stopAsync();

@@ -1,4 +1,8 @@
 import type { animationApi, sensoryEnrichApi } from "@/services/api";
+import {
+  buildTtsCueId,
+  normalizeSpeechRateLoose,
+} from "@/utils/audioTimeline";
 
 // Re-export enriched script type for consumers
 export type EnrichedAnimationScript =
@@ -154,6 +158,62 @@ export function enrichedScriptToSensoryOverlay(
     cognitiveState: sensory.cognitive_state ?? "OPTIMAL",
     ambientMode: sensory.ambient_mode ?? "silence",
     speechRate: sensory.speech_rate ?? "normal",
+    haptics,
+    narration,
+    researchMetrics: {},
+  };
+}
+
+/**
+ * Sensory overlay from GET/POST neuro-adaptive session fields (audio_timeline + optional haptics).
+ * Narration cue ids match buildTtsCueId(lessonId, at, text, speech_rate) for TTS prefetch cache.
+ */
+export function audioApiTimelineToSensoryOverlay(args: {
+  lessonId: string;
+  audioTimeline: animationApi.AudioTimelineItem[];
+  speechRate: unknown;
+  cognitiveState: string;
+  hapticTimeline?: animationApi.HapticTimelineItem[];
+  ambientMode?: SensoryOverlay["ambientMode"];
+}): SensoryOverlay | null {
+  if (!args.audioTimeline?.length) return null;
+  const sr = normalizeSpeechRateLoose(args.speechRate);
+  const narration: NarrationCue[] = [];
+  for (const row of args.audioTimeline) {
+    const at = row.at;
+    const duration = row.duration;
+    const text = String(row.text ?? "").trim();
+    if (!text || !Number.isFinite(at) || at < 0) continue;
+    const durationMs = Number.isFinite(duration) && duration >= 0 ? duration : 0;
+    narration.push({
+      id: buildTtsCueId(args.lessonId, at, text, sr),
+      atMs: at,
+      text,
+      durationMs,
+    });
+  }
+  if (!narration.length) return null;
+
+  const haptics: HapticCue[] = [];
+  const ht = args.hapticTimeline ?? [];
+  for (let i = 0; i < ht.length; i++) {
+    const h = ht[i];
+    if (!Number.isFinite(h.at) || h.at < 0) continue;
+    haptics.push({
+      id: `ht:${args.lessonId}:${h.at}:${i}`,
+      atMs: h.at,
+      pattern:
+        typeof h.pattern === "string" && h.pattern.length > 0
+          ? h.pattern
+          : "tap_soft",
+      sceneId: h.scene_id,
+    });
+  }
+
+  return {
+    cognitiveState: args.cognitiveState,
+    ambientMode: args.ambientMode ?? "silence",
+    speechRate: sr,
     haptics,
     narration,
     researchMetrics: {},

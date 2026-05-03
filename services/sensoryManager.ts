@@ -1,5 +1,6 @@
 import { HAPTIC_PATTERNS } from "@/constants/hapticPatterns";
 import { audioClient } from "@/services/audioClient";
+import { getPrefetchedNarrationUri } from "@/services/narrationAudio";
 import { researchLogger } from "@/services/researchLogger";
 import { useSensoryStore } from "@/store/sensoryStore";
 import type {
@@ -135,11 +136,16 @@ export class SensoryManager {
     const overlay = this.overlay;
     if (!overlay) return;
     try {
-      audioClient.playNarrationFromBackend(
-        cue.text,
-        overlay.speechRate,
-        undefined,
-      );
+      const cached = getPrefetchedNarrationUri(cue.id);
+      if (cached) {
+        audioClient.playNarrationFromUri(cached, undefined);
+      } else {
+        audioClient.playNarrationFromBackend(
+          cue.text,
+          overlay.speechRate,
+          undefined,
+        );
+      }
     } catch (err) {
       console.warn("[SensoryManager] narration error", err);
     }

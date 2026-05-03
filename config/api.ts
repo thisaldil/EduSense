@@ -46,8 +46,8 @@ const getApiBaseUrl = (): string => {
     return "http://127.0.0.1:8000";
   }
 
-  // Production - update this with your production API URL
-  return "http://127.0.0.1:8000";
+  // Production — EduSense API on Render (override with EXPO_PUBLIC_API_URL if needed)
+  return "https://sensory-learning-companion.onrender.com";
 };
 
 export const API_BASE_URL = getApiBaseUrl();
