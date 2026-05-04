@@ -46,20 +46,28 @@ const TYPE_ALIAS: Record<string, string> = {
   h2o: "waterdrop",
   carbondioxide: "co2",
   carbon_dioxide: "co2",
+  co2_bubble: "co2",
   oxygen: "oxygen",
   o2: "oxygen",
   molecule_o2: "oxygen",
   star: "sun",
+  sun_character: "sun",
   lightning: "bolt",
   energy: "bolt",
+  energy_bolt: "bolt",
   earth: "planet",
   tree: "plant",
   leaf: "plant",
+  plant_character: "plant",
   herbivore: "animal",
   carnivore: "animal",
   producer: "plant",
   consumer: "animal",
   glucose_molecule: "glucose",
+  glucose_hexagon: "glucose",
+  tuning_fork: "ear",
+  wave_emitter: "line",
+  air_particle: "molecule",
 };
 
 const DEFAULT_POSITIONS: Record<string, { x: number; y: number }> = {
@@ -376,21 +384,33 @@ function resolveMotion(actor: any, t: number, index: number) {
   if (anim === "sway" || anim === "float") {
     dx = oscillate(t + phase, 1.2, -6, 6);
     dy = oscillate(t + phase * 0.6, 0.8, -4, 4);
-  } else if (anim === "pulse" || anim === "glow") {
+  } else if (anim === "wobble_growth") {
+    scale = 1 + Math.abs(Math.sin((t + phase) * 1.5)) * 0.1;
+    dx = oscillate(t + phase, 1.35, -5, 5);
+    dy = oscillate(t + phase * 0.65, 0.95, -4, 4);
+  } else if (anim === "pulse" || anim === "glow" || anim === "shine") {
     scale = pulse(t + phase, 1.8, 0.08, 1);
   } else if (anim === "rotate" || anim === "spin") {
     rotation = (t + phase) * 0.8;
   } else if (anim === "bounce") {
     dy = -Math.abs(Math.sin((t + phase) * 3.2) * 14);
+  } else if (anim === "strike") {
+    const b = -Math.abs(Math.sin((t + phase) * 4.2) * 16);
+    dy = b;
+    const strikePulse = Math.pow(Math.max(0, Math.sin((t + phase) * 9.5)), 2);
+    scale = 1 + strikePulse * 0.22;
   } else if (anim === "fall") {
     dy = Math.min(90, (t * 100) % 120);
     alphaMul = 0.75;
   } else if (anim === "drift") {
     dx = Math.sin((t + phase) * 0.9) * 12;
     dy = Math.sin((t + phase) * 0.6) * 9;
+  } else if (anim === "float_in") {
+    dx = Math.sin((t + phase) * 0.9) * 12;
+    dy = Math.sin((t + phase) * 0.6) * 9;
   } else if (anim === "vibrate") {
-    dx = Math.sin((t + phase) * 20) * 2.2;
-    dy = Math.cos((t + phase) * 24) * 1.8;
+    dx = Math.sin((t + phase) * 38) * 4.2;
+    dy = Math.cos((t + phase) * 46) * 3.6;
   } else {
     dy = Math.sin((t + phase) * 0.7) * 3;
   }

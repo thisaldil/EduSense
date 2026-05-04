@@ -11,9 +11,12 @@
  *  4. Stale closure in sendInit (from v2).
  */
 
+import * as Haptics from "expo-haptics";
 import React, { useCallback, useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import { WebView } from "react-native-webview";
+
+import { normalizeScript } from "@/animation/scriptNormalizer";
 
 type Props = {
   isPlaying: boolean;
@@ -27,7 +30,7 @@ const ANIM_JS = `
   var canvas = document.getElementById("c");
   var ctx = canvas.getContext("2d");
   var W = 800, H = 600;
-  var state = { script: null, playing: false, t: 0, lastTs: null, domain: "generic" };
+  var state = { script: null, playing: false, t: 0, lastTs: null, domain: "generic", hapticLedger: {} };
 
   function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
   function lerp(a, b, t) { return a + (b - a) * t; }
@@ -110,14 +113,33 @@ const ANIM_JS = `
   // If ANY of these appear in the script's actors we must NOT call inferActors()
   // because that would overlay an entire second set of characters.
   var VISUAL_TYPES = [
-    "sun","plant","leaf","tree","root","cloud","waterdrop","water",
-    "co2","o2","oxygen","molecule","glucose","bolt","energy",
-    "rock","planet","earth","cell","chloroplast","bulb","ear","rabbit","lion","animal"
+    "sun","sun_character","plant","plant_character","leaf","tree","root","cloud","waterdrop","water","water_drop",
+    "co2","co2_bubble","o2","oxygen","molecule","air_particle","glucose","glucose_hexagon","bolt","energy","energy_bolt",
+    "rock","planet","earth","cell","chloroplast","bulb","ear","tuning_fork","wave_emitter","rabbit","lion","animal",
+    "line","arrow"
   ];
+  var TYPE_ALIAS = {
+    sun_character: "sun",
+    plant_character: "plant",
+    co2_bubble: "co2",
+    water_drop: "waterdrop",
+    energy_bolt: "bolt",
+    glucose_hexagon: "glucose",
+    tuning_fork: "ear",
+    wave_emitter: "line",
+    air_particle: "molecule"
+  };
+  function resolveActorType(raw) {
+    var k = String(raw || "label").toLowerCase().trim();
+    return TYPE_ALIAS[k] || k;
+  }
   function hasRealVisualActors(actors) {
     if (!actors || !actors.length) return false;
     return actors.some(function(a) {
-      return a && VISUAL_TYPES.indexOf(String(a.type || "").toLowerCase()) !== -1;
+      if (!a) return false;
+      var raw = String(a.type || "").toLowerCase();
+      if (VISUAL_TYPES.indexOf(raw) !== -1) return true;
+      return VISUAL_TYPES.indexOf(resolveActorType(raw)) !== -1;
     });
   }
 
@@ -349,6 +371,22 @@ const ANIM_JS = `
     ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(x,y,radius,0,Math.PI*2); ctx.fill(); ctx.restore();
   }
 
+  function drawLineSeg(x1,y1,x2,y2,color,thickness,alpha) {
+    ctx.save(); ctx.globalAlpha=alpha;
+    ctx.strokeStyle=color||"#1565C0"; ctx.lineWidth=thickness||2; ctx.lineCap="round";
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawEarActor(x,y,s,alpha) {
+    var sz=Math.max(14,(s||34)*0.42);
+    ctx.save(); ctx.globalAlpha=alpha;
+    ctx.fillStyle="#F9A825"; ctx.strokeStyle="#C2410C"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.ellipse(x,y,sz*0.7,sz,0.2,0,Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x+sz*0.08,y+sz*0.08,sz*0.28,0.2,4.8); ctx.stroke();
+    ctx.restore();
+  }
+
   function drawLabel(text,x,y,alpha,color) {
     if (!text) return;
     var fs=13;
@@ -370,9 +408,29 @@ const ANIM_JS = `
     var anim=String(actor.animation||"idle").toLowerCase(), phase=index*0.8;
     var dx=0,dy=0,scale=1;
     if(anim==="sway"||anim==="float")  { dx=Math.sin((t+phase)*1.2)*6; dy=Math.sin((t+phase)*0.8)*4; }
-    else if(anim==="pulse"||anim==="glow") { scale=1+Math.sin((t+phase)*1.8)*0.08; }
+    else if(anim==="wobble_growth") {
+      scale=1+Math.abs(Math.sin((t+phase)*1.5))*0.1;
+      dx=Math.sin((t+phase)*1.35)*5;
+      dy=Math.sin((t+phase)*0.95)*4;
+    }
+    else if(anim==="pulse"||anim==="glow"||anim==="shine") { scale=1+Math.sin((t+phase)*1.8)*0.08; }
     else if(anim==="bounce")           { dy=-Math.abs(Math.sin((t+phase)*3.2)*14); }
-    else if(anim==="drift")            { dx=Math.sin((t+phase)*0.9)*12; dy=Math.sin((t+phase)*0.6)*9; }
+    else if(anim==="strike") {
+      dy=-Math.abs(Math.sin((t+phase)*4.2)*16);
+      scale=1+Math.pow(Math.max(0,Math.sin((t+phase)*9.5)),2)*0.22;
+    }
+    else if(anim==="drift") {
+      dx=Math.sin((t+phase)*0.9)*12;
+      dy=Math.sin((t+phase)*0.6)*9;
+    }
+    else if(anim==="float_in") {
+      dx=Math.sin((t+phase)*0.9)*12;
+      dy=Math.sin((t+phase)*0.6)*9;
+    }
+    else if(anim==="vibrate") {
+      dx=Math.sin((t+phase)*38)*4.2;
+      dy=Math.cos((t+phase)*46)*3.6;
+    }
     else                               { dy=Math.sin((t+phase)*0.7)*3; }
     return { dx:dx, dy:dy, scale:scale };
   }
@@ -380,15 +438,15 @@ const ANIM_JS = `
   function drawActor(actor,alpha,t,index) {
     if (actor.x == null || actor.y == null) return;
     var m=actorMotion(actor,t,index);
-    var x=actor.x+m.dx, y=actor.y+m.dy, size=(actor.size||40)*m.scale, type=actor.type;
+    var x=actor.x+m.dx, y=actor.y+m.dy, size=(actor.size||40)*m.scale, type=resolveActorType(actor.type);
 
-    if      (type==="sun")                        drawSun(x,y,size,t,alpha);
-    else if (type==="plant"||type==="tree")       drawPlant(x,y,t,alpha,size/90);
+    if      (type==="sun") drawSun(x,y,size,t,alpha);
+    else if (type==="plant"||type==="tree") drawPlant(x,y,t,alpha,size/90);
     else if (type==="leaf")                       drawPlant(x,y,t,alpha,size/70);
     else if (type==="root")                       drawRoot(x,y,alpha,actor.color);
     else if (type==="cloud")                      drawCloud(x,y,size/24,alpha);
-    else if (type==="waterdrop"||type==="water")  drawWaterDrop(x,y,size*0.5,alpha,actor.color||"#29B6F6");
-    else if (type==="co2")                        drawCO2(x,y,size*0.52,alpha);
+    else if (type==="waterdrop"||type==="water") drawWaterDrop(x,y,size*0.5,alpha,actor.color||"#29B6F6");
+    else if (type==="co2")   drawCO2(x,y,size*0.52,alpha);
     else if (type==="o2"||type==="oxygen")        drawO2(x,y,size*0.52,alpha);
     else if (type==="glucose")                    drawGlucose(x,y,size*0.56,alpha,t);
     else if (type==="cell"||type==="chloroplast") drawCell(x,y,size*0.52,alpha,actor.color,t);
@@ -400,6 +458,12 @@ const ANIM_JS = `
       else drawWaterDrop(x,y,size*0.5,alpha,actor.color||"#29B6F6");
     }
     else if (type==="bolt"||type==="energy") drawBolt(x,y,size*0.56,alpha,actor.color||"#A855F7");
+    else if (type==="line") {
+      var lx1=actor.x1!=null?Number(actor.x1):x, ly1=actor.y1!=null?Number(actor.y1):y;
+      var lx2=actor.x2!=null?Number(actor.x2):lx1+120, ly2=actor.y2!=null?Number(actor.y2):ly1;
+      drawLineSeg(lx1,ly1,lx2,ly2,actor.color||"#1565C0",actor.thickness||2,alpha);
+    }
+    else if (type==="ear") drawEarActor(x,y,size,alpha);
     else if (type==="rock")                  drawRock(x,y,size*0.52,alpha,actor.color);
     else if (type==="planet"||type==="earth") drawPlanet(x,y,size*0.56,alpha,actor.color);
     else if (type==="arrow")                 drawArrow(x,y,Number(actor.angle)||0,Number(actor.length)||120,actor.color||"#1565C0",actor.thickness||3,alpha);
@@ -411,13 +475,14 @@ const ANIM_JS = `
     }
   }
 
-  function drawActors(actors,elapsed,t) {
+  function drawActors(actors,elapsed,t,scene) {
+    var scId = scene&&scene.id!=null ? String(scene.id) : "scene";
     (actors||[]).forEach(function(actor,index) {
-      var start=index*180, base=fadeIn(elapsed,start,520), alpha=base;
+      var start=index*180, base=fadeIn(elapsed,start,520), alpha=base, current=null;
       if (Array.isArray(actor.timeline) && actor.timeline.length) {
         var tl=actor.timeline.filter(function(s){ return s&&Number.isFinite(s.at); })
                              .sort(function(a,b){ return a.at-b.at; });
-        var current=null, next=null;
+        var next=null;
         for (var i=0;i<tl.length;i++) {
           if(elapsed>=tl[i].at){ current=tl[i]; next=tl[i+1]||null; } else { next=tl[i]; break; }
         }
@@ -425,6 +490,24 @@ const ANIM_JS = `
           if (next && typeof next.alpha==="number" && next.at>current.at) {
             alpha=alpha*lerp(current.alpha, next.alpha, easeOut((elapsed-current.at)/(next.at-current.at)));
           } else alpha=alpha*current.alpha;
+        }
+        if (current) {
+          var act=String(current.action||"").toLowerCase();
+          var wantAction=act==="strike"||act==="vibrate";
+          var hs=actor.haptic_sync;
+          var hasHapticSync=hs!=null&&hs!==false&&hs!=="";
+          if ((wantAction||hasHapticSync) && !current._hapticFired) {
+            var hk = scId+":"+index+":"+current.at+":"+(wantAction?"1":"0")+":"+(hasHapticSync?"1":"0");
+            if (!state.hapticLedger[hk]) {
+              state.hapticLedger[hk]=1;
+              current._hapticFired=true;
+              var styleStr="light";
+              if (typeof hs==="string"&&hs.length) styleStr=hs;
+              else if (hs===true||hs===1) styleStr="light";
+              else if (wantAction) styleStr="medium";
+              post({ type:"HAPTIC", style:styleStr });
+            }
+          }
         }
       }
       if (alpha>0.005) drawActor(actor,alpha,t,index);
@@ -503,7 +586,7 @@ const ANIM_JS = `
       return a;
     });
 
-    drawActors(actors,elapsed,time);
+    drawActors(actors,elapsed,time,scene);
 
     var steps=processSteps(scene.text||"");
     var windowMs=Math.max(700,duration/steps.length);
@@ -537,11 +620,13 @@ const ANIM_JS = `
         state.playing=!!msg.isPlaying;
         state.t=Number.isFinite(msg.t)?Math.max(0,Math.min(msg.t,state.script.duration||0)):0;
         state.lastTs=null;
+        state.hapticLedger={};
       } else if(msg.type==="play"){
         state.playing=!!msg.v; if(!state.playing) state.lastTs=null;
       } else if(msg.type==="seek"){
         var max=state.script?state.script.duration||0:0;
         state.t=Math.max(0,Math.min(Number(msg.t)||0,max));
+        state.hapticLedger={};
       }
     } catch(err){ post({debug:String(err&&err.message?err.message:err)}); }
   };
@@ -560,6 +645,19 @@ function inject(payload: object): string {
   return `(function(){if(typeof window.__anim==='function'){window.__anim(${JSON.stringify(payload)});}})();true;`;
 }
 
+function playHapticFromPayload(style: unknown) {
+  const s = String(style ?? "light").toLowerCase();
+  let impact: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle.Medium;
+  if (s === "light" || s === "soft") {
+    impact = Haptics.ImpactFeedbackStyle.Light;
+  } else if (s === "heavy" || s === "rigid") {
+    impact = Haptics.ImpactFeedbackStyle.Heavy;
+  } else if (s === "medium") {
+    impact = Haptics.ImpactFeedbackStyle.Medium;
+  }
+  void Haptics.impactAsync(impact);
+}
+
 export function AnimationCanvasWebView({
   isPlaying,
   script,
@@ -576,8 +674,10 @@ export function AnimationCanvasWebView({
 
   const sendInit = useCallback((webView: any) => {
     const { isPlaying: ip, script: sc, currentTimeMs: t } = propsRef.current;
+    const payloadScript =
+      sc && typeof sc === "object" ? normalizeScript(sc) : sc;
     webView.injectJavaScript(
-      inject({ type: "init", script: sc, isPlaying: ip, t: t ?? 0 }),
+      inject({ type: "init", script: payloadScript, isPlaying: ip, t: t ?? 0 }),
     );
     readyRef.current = true;
   }, []);
@@ -625,6 +725,9 @@ export function AnimationCanvasWebView({
         onMessage={(event: any) => {
           try {
             const payload = JSON.parse(event.nativeEvent.data ?? "{}");
+            if (payload.type === "HAPTIC") {
+              playHapticFromPayload(payload.style);
+            }
             if (payload.ready && script && webViewRef.current)
               sendInit(webViewRef.current);
             if (typeof __DEV__ !== "undefined" && __DEV__ && payload.debug) {

@@ -3,6 +3,8 @@
  * Sanitizes backend animation scripts for renderer safety.
  */
 
+import { repairSceneActors } from "./scriptRepair";
+
 export interface RawActor {
   type?: string;
   x?: number | null;
@@ -82,6 +84,7 @@ const DEFAULT_COLORS: Record<string, string> = {
   glucose: "#FB923C",
   bolt: "#A855F7",
   arrow: "#1565C0",
+  line: "#1565C0",
   rock: "#795548",
   planet: "#42A5F5",
   volcano: "#6D4C41",
@@ -91,7 +94,65 @@ const DEFAULT_COLORS: Record<string, string> = {
   ear: "#F59E0B",
   molecule: "#29B6F6",
   animal: "#D9A56F",
+  sun_character: "#FACC15",
+  plant_character: "#4CAF50",
+  co2_bubble: "#90A4AE",
+  water_drop: "#29B6F6",
+  energy_bolt: "#A855F7",
+  glucose_hexagon: "#FB923C",
+  tuning_fork: "#F59E0B",
+  wave_emitter: "#1565C0",
+  air_particle: "#29B6F6",
 };
+
+/** Backend metaphor + canonical actor types (normalizer does not strip unknown types). */
+const KNOWN_ACTOR_TYPES = new Set([
+  "sun",
+  "plant",
+  "root",
+  "cloud",
+  "waterdrop",
+  "water",
+  "co2",
+  "oxygen",
+  "glucose",
+  "bolt",
+  "arrow",
+  "line",
+  "label",
+  "animal",
+  "planet",
+  "volcano",
+  "rock",
+  "thermometer",
+  "molecule",
+  "bulb",
+  "ear",
+  "bird",
+  "fish",
+  "frog",
+  "snake",
+  "rabbit",
+  "deer",
+  "goat",
+  "lion",
+  "fox",
+  "star",
+  "moon",
+  "leaf",
+  "tree",
+  "cell",
+  "chloroplast",
+  "water_drop",
+  "sun_character",
+  "plant_character",
+  "co2_bubble",
+  "energy_bolt",
+  "glucose_hexagon",
+  "tuning_fork",
+  "wave_emitter",
+  "air_particle",
+]);
 
 function warn(message: string) {
   warnings.push(message);
@@ -131,6 +192,12 @@ function normalizeActor(raw: RawActor, index: number, sceneId: string): Normaliz
     warn(`Scene "${sceneId}" actor[${index}] "${type}" is missing x/y. Auto-layout will place it.`);
   }
 
+  if (!KNOWN_ACTOR_TYPES.has(type)) {
+    warn(
+      `Scene "${sceneId}" actor[${index}] has unrecognized type "${type}". It may render as a fallback shape.`,
+    );
+  }
+
   return {
     ...raw,
     type,
@@ -147,7 +214,7 @@ function normalizeActor(raw: RawActor, index: number, sceneId: string): Normaliz
 
 function normalizeScene(raw: RawScene, index: number, fallbackStart: number): NormalizedScene {
   const id = String(raw.id || `scene_${index}`);
-  const duration =
+  let duration =
     Number.isFinite(raw.duration) && Number(raw.duration) > 0
       ? Number(raw.duration)
       : DEFAULT_SCENE_DURATION;
@@ -155,9 +222,13 @@ function normalizeScene(raw: RawScene, index: number, fallbackStart: number): No
     Number.isFinite(raw.startTime) && Number(raw.startTime) >= 0
       ? Number(raw.startTime)
       : fallbackStart;
-  const actors = Array.isArray(raw.actors)
+  let actors = Array.isArray(raw.actors)
     ? raw.actors.map((actor, actorIndex) => normalizeActor(actor || {}, actorIndex, id))
     : [];
+
+  const repaired = repairSceneActors(actors, duration, String(raw.text || ""));
+  actors = repaired.actors as NormalizedActor[];
+  duration = repaired.duration;
 
   if (actors.length === 0 && raw.text) {
     warn(`Scene "${id}" has narration text but no visual actors.`);

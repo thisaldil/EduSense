@@ -2,8 +2,8 @@
  * AnimationCanvasNative.android.tsx — Android uses WebView instead of GLView.
  *
  * expo-2d-context (GLView) has known issues on Android: crashes, gradient bugs,
- * text not rendering. test-visual works because it uses WebView with a real
- * HTML canvas. This file delegates to AnimationCanvasWebView for Android.
+ * text not rendering. This file delegates to AnimationCanvasWebView so playback
+ * uses a real HTML canvas inside a WebView.
  */
 
 import { AnimationCanvasWebView } from "./AnimationCanvasWebView";
