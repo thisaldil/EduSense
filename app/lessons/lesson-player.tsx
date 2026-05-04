@@ -11,6 +11,7 @@ import {
   Dimensions,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { AnimationCanvasNative } from "@/components/AnimationCanvasNative";
 import { animationApi, sensoryEnrichApi } from "@/services/api";
 import { generateQuiz, getLatestTransmutedContent } from "@/services/lessons";
@@ -26,6 +27,7 @@ import { useSensoryStore } from "@/store/sensoryStore";
 import { audioApiTimelineToSensoryOverlay } from "@/types/sensory";
 import type { SensoryOverlay } from "@/types/sensory";
 import { overlayFromPlaybackScript } from "@/services/narrationAudio";
+import { sensoryManager } from "@/services/sensoryManager";
 import { activeAudioTimelineIndex } from "@/utils/audioTimeline";
 
 type AnimationScript = animationApi.NeuroAdaptiveAnimationScript;
@@ -586,6 +588,7 @@ export function LessonAnimationPanel({
 
   const narrationPrefetch = useNarrationPrefetch(prefetchSensoryOverlay);
   const sensoryAudioOn = useSensoryStore((s) => s.audioEnabled);
+  const narrationPlaybackError = useSensoryStore((s) => s.narrationPlaybackError);
 
   return (
     <View style={panelSt.root}>
@@ -602,6 +605,18 @@ export function LessonAnimationPanel({
             </Text>
           </View>
         </View>
+      )}
+
+      {!!narrationPlaybackError && (
+        <Pressable
+          style={panelSt.narrationErrBanner}
+          onPress={() =>
+            useSensoryStore.getState().setNarrationPlaybackError(null)
+          }
+        >
+          <Text style={panelSt.narrationErrText}>{narrationPlaybackError}</Text>
+          <Text style={panelSt.narrationErrDismiss}>Dismiss</Text>
+        </Pressable>
       )}
 
       {/* ── Main canvas ── */}
@@ -839,6 +854,25 @@ const panelSt = StyleSheet.create({
     paddingVertical: 4,
   },
   timerText: { fontSize: 10, fontWeight: "600", color: "#64748B" },
+
+  narrationErrBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FEF2F2",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "#FECACA",
+  },
+  narrationErrText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#991B1B",
+    marginRight: 8,
+  },
+  narrationErrDismiss: { fontSize: 12, fontWeight: "700", color: "#B91C1C" },
 
   canvasWrap: {
     width: "100%",
@@ -1082,6 +1116,14 @@ export default function LessonPlayerScreen() {
     sessionId: undefined,
     cognitiveState: neuroState.currentState,
   });
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        sensoryManager.onScreenBlurred();
+      };
+    }, []),
+  );
 
   useEffect(() => {
     logInteraction("SECTION_START", {

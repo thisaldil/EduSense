@@ -3,19 +3,56 @@ import { router, useLocalSearchParams } from "expo-router";
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import {
   Animated,
-  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
-  Dimensions,
 } from "react-native";
 
-import { Colors, Typography } from "@/constants/theme";
+/** Split transmuted prose into readable blocks (paragraphs, then sentences). */
+function splitLessonTextIntoBlocks(text: string): string[] {
+  const raw = text.trim();
+  if (!raw) return [];
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+  const byLine = raw
+    .split(/\n+/)
+    .map((p) => p.replace(/^[\*\-•]\s*/, "").trim())
+    .filter(Boolean);
+
+  if (byLine.length > 1) return byLine;
+
+  const blob = byLine[0] || raw;
+  const sentences = blob
+    .split(/(?<=[.!?])\s+(?=[A-Z0-9(])/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (sentences.length > 1) return sentences;
+  return [blob];
+}
+
+/** Lightweight visual hints from lesson wording (works offline, no script JSON). */
+function conceptVisualHints(text: string, keywords?: string[]): string[] {
+  const hay = `${text} ${(keywords || []).join(" ")}`.toLowerCase();
+  const rules: { re: RegExp; icon: string }[] = [
+    { re: /photosynth|chlorophyll|glucose|sugar|c₆h/, icon: "🌱" },
+    { re: /plant|leaf|leaves|root|soil/, icon: "🍃" },
+    { re: /oxygen|o₂|breathe|animal|life on earth/, icon: "💨" },
+    { re: /carbon\s*dioxide|co₂|atmosphere/, icon: "☁️" },
+    { re: /water|h₂o|evapor|condens|rain/, icon: "💧" },
+    { re: /sun|sunlight|light energy|solar/, icon: "☀️" },
+    { re: /food\s*chain|ecosystem|energy flow/, icon: "⛓️" },
+    { re: /cell|molecule|atom|reaction/, icon: "🔬" },
+  ];
+  const out: string[] = [];
+  for (const { re, icon } of rules) {
+    if (re.test(hay) && !out.includes(icon)) out.push(icon);
+    if (out.length >= 6) break;
+  }
+  return out;
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type CognitiveState = "OVERLOAD" | "OPTIMAL" | "LOW_LOAD";
@@ -309,10 +346,14 @@ function CalmStepCards({
   text: string;
   theme: StudentTheme;
 }) {
-  const lines = text
-    .split(/\n+/)
-    .map((l) => l.replace(/^[\*\-•]\s*/, "").trim())
-    .filter(Boolean);
+  const fromBlocks = splitLessonTextIntoBlocks(text);
+  const lines =
+    fromBlocks.length > 0
+      ? fromBlocks
+      : text
+          .split(/\n+/)
+          .map((l) => l.replace(/^[\*\-•]\s*/, "").trim())
+          .filter(Boolean);
 
   return (
     <View>
@@ -407,6 +448,46 @@ const calmStyles = StyleSheet.create({
   },
 });
 
+function ConceptHintStrip({
+  hints,
+  theme,
+}: {
+  hints: string[];
+  theme: StudentTheme;
+}) {
+  if (hints.length === 0) return null;
+  return (
+    <FadeIn delay={40}>
+      <View
+        style={[
+          structStyles.hintStrip,
+          {
+            backgroundColor: theme.accentBg,
+            borderColor: theme.pillBorder,
+          },
+        ]}
+      >
+        <Text style={[structStyles.hintLabel, { color: theme.mutedColor }]}>
+          Ideas in this lesson
+        </Text>
+        <View style={structStyles.hintRow}>
+          {hints.map((icon, i) => (
+            <View
+              key={`${icon}-${i}`}
+              style={[
+                structStyles.hintBubble,
+                { backgroundColor: theme.cardBg, borderColor: theme.pillBorder },
+              ]}
+            >
+              <Text style={structStyles.hintEmoji}>{icon}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    </FadeIn>
+  );
+}
+
 // ─── OPTIMAL Layout: Structured Dual-Panel ───────────────────────────────────
 function StructuredLessonPanel({
   text,
@@ -417,12 +498,19 @@ function StructuredLessonPanel({
   keywords?: string[];
   theme: StudentTheme;
 }) {
+  const blocksRaw = splitLessonTextIntoBlocks(text);
+  const blocks =
+    blocksRaw.length > 0
+      ? blocksRaw
+      : [(text || "").trim() || "No transmuted text yet."];
+  const hints = conceptVisualHints(text, keywords);
+
   return (
     <View>
       {/* Mode badge */}
       <View style={structStyles.modeBadge}>
         <Text style={structStyles.modeEmoji}>{theme.mascot}</Text>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={[structStyles.modeName, { color: theme.headingColor }]}>
             {theme.modeName}
           </Text>
@@ -432,21 +520,42 @@ function StructuredLessonPanel({
         </View>
       </View>
 
+      <ConceptHintStrip hints={hints} theme={theme} />
+
       {/* Divider */}
       <View
         style={[structStyles.divider, { backgroundColor: theme.pillBorder }]}
       />
 
-      {/* Main prose */}
+      {/* Main prose — one card per idea */}
       <FadeIn delay={80}>
         <Text
           style={[structStyles.sectionHeading, { color: theme.accentColor }]}
         >
-          📖 Lesson Explanation
+          Lesson explanation
         </Text>
-        <Text style={[structStyles.proseText, { color: theme.bodyColor }]}>
-          {text}
-        </Text>
+        {blocks.map((block, i) => (
+          <FadeIn key={i} delay={80 + i * 70}>
+            <View
+              style={[
+                structStyles.proseBlock,
+                {
+                  borderLeftColor: theme.accentColor,
+                  backgroundColor: theme.accentBg,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  i === 0 ? structStyles.proseLead : structStyles.proseText,
+                  { color: theme.bodyColor },
+                ]}
+              >
+                {block}
+              </Text>
+            </View>
+          </FadeIn>
+        ))}
       </FadeIn>
 
       {/* Vocab sidebar as horizontal chips */}
@@ -461,7 +570,7 @@ function StructuredLessonPanel({
             <Text
               style={[structStyles.vocabLabel, { color: theme.accentColor }]}
             >
-              🔑 Key Vocabulary
+              Key vocabulary
             </Text>
             <View style={structStyles.chipsRow}>
               {keywords.map((kw) => (
@@ -495,29 +604,65 @@ const structStyles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    marginBottom: 14,
+    marginBottom: 12,
   },
   modeEmoji: { fontSize: 30 },
   modeName: { fontSize: 17, fontWeight: "800" },
   modeSubtitle: { fontSize: 12, marginTop: 1 },
-  divider: { height: 1, marginBottom: 16 },
-  sectionHeading: {
-    fontSize: 13,
+  hintStrip: {
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+  },
+  hintLabel: {
+    fontSize: 10,
     fontWeight: "800",
-    letterSpacing: 0.4,
-    marginBottom: 10,
+    letterSpacing: 0.9,
     textTransform: "uppercase",
+    marginBottom: 8,
+  },
+  hintRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  hintBubble: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  hintEmoji: { fontSize: 22 },
+  divider: { height: StyleSheet.hairlineWidth, marginBottom: 14 },
+  sectionHeading: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.9,
+    marginBottom: 12,
+    textTransform: "uppercase",
+  },
+  proseBlock: {
+    borderLeftWidth: 3,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    paddingRight: 12,
+    marginBottom: 10,
+  },
+  proseLead: {
+    fontSize: 16,
+    lineHeight: 26,
+    fontWeight: "700",
   },
   proseText: {
     fontSize: 15,
-    lineHeight: 25,
+    lineHeight: 24,
     fontWeight: "500",
-    marginBottom: 16,
   },
   vocabBox: {
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
+    marginTop: 6,
   },
   vocabLabel: {
     fontSize: 12,
@@ -544,13 +689,8 @@ function AdventureStoryView({
   text: string;
   theme: StudentTheme;
 }) {
-  // Split into paragraphs or sentences for dramatic reveal
-  const parts = text
-    .split(/\n+/)
-    .map((p) => p.trim())
-    .filter(Boolean);
-
-  const paragraphs = parts.length > 1 ? parts : text.match(/[^.!?]+[.!?]+/g)?.map((s) => s.trim()).filter(Boolean) || [text];
+  const blocks = splitLessonTextIntoBlocks(text);
+  const paragraphs = blocks.length > 0 ? blocks : [text].filter(Boolean);
 
   return (
     <View>
@@ -785,7 +925,14 @@ export default function ConceptExploreScreen() {
       <Animated.View
         style={[
           mainStyles.header,
-          { backgroundColor: theme.headerBg, opacity: headerOpacity },
+          {
+            backgroundColor: theme.headerBg,
+            opacity: headerOpacity,
+            borderBottomColor:
+              profile.type === "struggling"
+                ? "rgba(255,255,255,0.08)"
+                : "rgba(15,23,42,0.09)",
+          },
         ]}
       >
         <Pressable
@@ -1062,8 +1209,7 @@ const mainStyles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 10,
     paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.07)",
+    borderBottomWidth: StyleSheet.hairlineWidth,
     gap: 8,
   },
   backButton: {

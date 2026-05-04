@@ -113,6 +113,7 @@ export async function synthesizeToLocalUri(
   token: string | null,
   text: string,
   speechRate: SpeechRate,
+  signal?: AbortSignal,
 ): Promise<SynthesizeResult> {
   const base = apiBase.replace(/\/$/, "");
   const url = `${base}${TTS_PATH}`;
@@ -128,6 +129,7 @@ export async function synthesizeToLocalUri(
       text: String(text).trim(),
       speech_rate: speechRate,
     }),
+    signal,
   });
 
   if (!response.ok) {
@@ -263,6 +265,7 @@ export async function prefetchNarrationClips(options: {
           token,
           cue.text,
           overlay.speechRate,
+          signal,
         );
         if (signal?.aborted) return;
         registerPrefetchedNarrationUri(cue.id, result.uri);

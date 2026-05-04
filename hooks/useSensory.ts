@@ -8,7 +8,6 @@ import {
 import { sensoryClient } from "@/services/sensoryClient";
 import { sensoryManager } from "@/services/sensoryManager";
 import { useSensoryStore } from "@/store/sensoryStore";
-import { audioClient } from "@/services/audioClient";
 
 type NeuroAdaptiveAnimationScript = animationApi.NeuroAdaptiveAnimationScript;
 
@@ -116,12 +115,10 @@ export function useSensory({
   // Drive manager from the animation clock
   useEffect(() => {
     if (!animationClock.isPlaying) {
-      // When the learner pauses or the animation stops, immediately stop
-      // any in-flight narration so audio does not continue over later scenes.
-      audioClient.stopNarration();
+      sensoryManager.onAnimationPaused();
       return;
     }
-    sensoryManager.onTick(animationClock.currentTimeMs);
+    void sensoryManager.onTick(animationClock.currentTimeMs);
   }, [animationClock.currentTimeMs, animationClock.isPlaying]);
 
   // Cleanup on unmount

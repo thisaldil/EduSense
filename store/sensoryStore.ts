@@ -21,6 +21,8 @@ export type SensoryState = {
   lastCues: LastCue[];
   currentOverlay?: SensoryOverlay;
   sessionId?: string;
+  /** Last TTS / narration playback error for UI (HTTP 4xx/5xx, load failures). */
+  narrationPlaybackError: string | null;
 
   setHapticsEnabled: (v: boolean) => void;
   setAudioEnabled: (v: boolean) => void;
@@ -28,6 +30,7 @@ export type SensoryState = {
   setLastCue: (cue: LastCue | undefined) => void;
   setOverlay: (overlay: SensoryOverlay | undefined) => void;
   setSessionId: (id: string | undefined) => void;
+  setNarrationPlaybackError: (msg: string | null) => void;
 };
 
 export const useSensoryStore = create<SensoryState>((set) => ({
@@ -38,6 +41,7 @@ export const useSensoryStore = create<SensoryState>((set) => ({
   lastCues: [],
   currentOverlay: undefined,
   sessionId: undefined,
+  narrationPlaybackError: null,
 
   setHapticsEnabled: (v) => set({ hapticsEnabled: v }),
   setAudioEnabled: (v) => set({ audioEnabled: v }),
@@ -51,5 +55,6 @@ export const useSensoryStore = create<SensoryState>((set) => ({
     })),
   setOverlay: (overlay) => set({ currentOverlay: overlay }),
   setSessionId: (id) => set({ sessionId: id }),
+  setNarrationPlaybackError: (msg) => set({ narrationPlaybackError: msg }),
 }));
 
