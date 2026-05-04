@@ -1,14 +1,13 @@
 import { useEffect, useRef } from "react";
 import type { animationApi } from "@/services/api";
-import type { SensoryOverlay } from "@/types/sensory";
 import {
   enrichedScriptToSensoryOverlay,
   type EnrichedAnimationScript,
+  type SensoryOverlay,
 } from "@/types/sensory";
 import { sensoryClient } from "@/services/sensoryClient";
 import { sensoryManager } from "@/services/sensoryManager";
 import { useSensoryStore } from "@/store/sensoryStore";
-import { audioClient } from "@/services/audioClient";
 
 type NeuroAdaptiveAnimationScript = animationApi.NeuroAdaptiveAnimationScript;
 
@@ -19,6 +18,11 @@ export type UseSensoryParams = {
   script: NeuroAdaptiveAnimationScript | EnrichedAnimationScript | null;
   cognitiveState: string;
   animationClock: { currentTimeMs: number; isPlaying: boolean };
+  /**
+   * When set (e.g. GET neuro-adaptive/latest returned audio_timeline), skip enrich-script /
+   * GET sensory overlay and drive narration/haptics from this wall-clock overlay only.
+   */
+  sessionSensoryOverlay?: SensoryOverlay;
 };
 
 export function useSensory({
@@ -28,6 +32,7 @@ export function useSensory({
   script,
   cognitiveState,
   animationClock,
+  sessionSensoryOverlay,
 }: UseSensoryParams) {
   const overlayRef = useRef<SensoryOverlay | undefined>(undefined);
   const currentState = useSensoryStore((s) => s.cognitiveState);
@@ -44,6 +49,12 @@ export function useSensory({
   // Fallback: if script has no sensory, try legacy GET overlay for backward compat; otherwise no sensory.
   useEffect(() => {
     const applyOverlay = async () => {
+      if (sessionSensoryOverlay) {
+        overlayRef.current = sessionSensoryOverlay;
+        sensoryManager.setOverlay(sessionSensoryOverlay);
+        return;
+      }
+
       if (!script) {
         overlayRef.current = undefined;
         sensoryManager.setOverlay(undefined);
@@ -83,7 +94,14 @@ export function useSensory({
     };
 
     applyOverlay();
-  }, [script, cognitiveState, lessonId, studentId, sessionId]);
+  }, [
+    sessionSensoryOverlay,
+    script,
+    cognitiveState,
+    lessonId,
+    studentId,
+    sessionId,
+  ]);
 
   // Attach session context
   useEffect(() => {
@@ -97,12 +115,10 @@ export function useSensory({
   // Drive manager from the animation clock
   useEffect(() => {
     if (!animationClock.isPlaying) {
-      // When the learner pauses or the animation stops, immediately stop
-      // any in-flight narration so audio does not continue over later scenes.
-      audioClient.stopNarration();
+      sensoryManager.onAnimationPaused();
       return;
     }
-    sensoryManager.onTick(animationClock.currentTimeMs);
+    void sensoryManager.onTick(animationClock.currentTimeMs);
   }, [animationClock.currentTimeMs, animationClock.isPlaying]);
 
   // Cleanup on unmount

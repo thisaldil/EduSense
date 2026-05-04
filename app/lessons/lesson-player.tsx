@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   SafeAreaView,
@@ -11,6 +11,7 @@ import {
   Dimensions,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { AnimationCanvasNative } from "@/components/AnimationCanvasNative";
 import { animationApi, sensoryEnrichApi } from "@/services/api";
 import { generateQuiz, getLatestTransmutedContent } from "@/services/lessons";
@@ -18,8 +19,16 @@ import { useNeuroState } from "@/context/NeuroStateContext";
 import { useAnalyticsLogger } from "@/context/AnalyticsLoggerContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSensory } from "@/hooks/useSensory";
+import { useNarrationPrefetch } from "@/hooks/useNarrationPrefetch";
 import { BiometricBanner } from "@/components/sensory/BiometricBanner";
+import { NarrationTimelineCaption } from "@/components/sensory/NarrationTimelineCaption";
 import { SensoryToggle } from "@/components/sensory/SensoryToggle";
+import { useSensoryStore } from "@/store/sensoryStore";
+import { audioApiTimelineToSensoryOverlay } from "@/types/sensory";
+import type { SensoryOverlay } from "@/types/sensory";
+import { overlayFromPlaybackScript } from "@/services/narrationAudio";
+import { sensoryManager } from "@/services/sensoryManager";
+import { activeAudioTimelineIndex } from "@/utils/audioTimeline";
 
 type AnimationScript = animationApi.NeuroAdaptiveAnimationScript;
 type EnrichedScript = sensoryEnrichApi.EnrichedAnimationScript;
@@ -312,6 +321,8 @@ function useNeuroAdaptiveScript({
   cognitiveState?: string;
 }) {
   const [script, setScript] = useState<AnimationScript | null>(null);
+  const [sessionMeta, setSessionMeta] =
+    useState<animationApi.NeuroAdaptiveSessionFields | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastStateRef = useRef<string | undefined>(undefined);
@@ -319,6 +330,7 @@ function useNeuroAdaptiveScript({
   const fetchScript = useCallback(async () => {
     if (!studentId) {
       setScript(null);
+      setSessionMeta(null);
       return;
     }
     setLoading(true);
@@ -341,6 +353,7 @@ function useNeuroAdaptiveScript({
         if (lessonMatches && stateMatches) {
           lastStateRef.current = latest.cognitive_state;
           setScript(latest.script);
+          setSessionMeta(animationApi.pickNeuroAdaptiveSessionFields(latest));
           return;
         }
       }
@@ -366,11 +379,13 @@ function useNeuroAdaptiveScript({
 
       lastStateRef.current = resolvedState;
       setScript(animation.script);
+      setSessionMeta(animationApi.pickNeuroAdaptiveSessionFields(animation));
     } catch (err: any) {
       setError(
         err?.message || "Unable to generate a visual explanation right now.",
       );
       setScript(null);
+      setSessionMeta(null);
     } finally {
       setLoading(false);
     }
@@ -379,7 +394,7 @@ function useNeuroAdaptiveScript({
   useEffect(() => {
     fetchScript();
   }, [fetchScript]);
-  return { script, loading, error, refetch: fetchScript };
+  return { script, sessionMeta, loading, error, refetch: fetchScript };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -390,6 +405,7 @@ export function LessonAnimationPanel({
   studentId,
   sessionId,
   script,
+  sessionMeta = null,
   loading,
   error,
   onRetry,
@@ -399,6 +415,8 @@ export function LessonAnimationPanel({
   studentId?: string;
   sessionId?: string | null;
   script: AnimationScript | null;
+  /** From GET/POST neuro-adaptive — drives captions + TTS when audio_timeline is set. */
+  sessionMeta?: animationApi.NeuroAdaptiveSessionFields | null;
   loading?: boolean;
   error?: string | null;
   onRetry?: () => void;
@@ -415,10 +433,15 @@ export function LessonAnimationPanel({
     AnimationScript | EnrichedScript | null
   >(null);
 
-  // When we have a visual script, enrich it before playback; use result as single source of truth for animation + audio + haptics.
+  // When API provides audio_timeline, use the visual script as-is (enrich would duplicate narration).
+  // Otherwise POST /sensory/enrich-script for per-scene narration + haptics.
   useEffect(() => {
     if (!script) {
       setPlaybackScript(null);
+      return;
+    }
+    if (sessionMeta?.audio_timeline && sessionMeta.audio_timeline.length > 0) {
+      setPlaybackScript(script);
       return;
     }
     setPlaybackScript(script);
@@ -437,7 +460,7 @@ export function LessonAnimationPanel({
       .catch(() => {
         // Fallback: keep visual-only script; no narration/haptics
       });
-  }, [script, cognitiveState]);
+  }, [script, cognitiveState, sessionMeta]);
 
   // Reset on new script
   useEffect(() => {
@@ -446,7 +469,28 @@ export function LessonAnimationPanel({
     setActiveSceneIdx(0);
   }, [script]);
 
-  // Member 3 – Sensory overlay (haptics + audio) driven by the same clock; uses enriched script when available.
+  const apiSessionSensoryOverlay = useMemo((): SensoryOverlay | undefined => {
+    if (!lessonId || !sessionMeta?.audio_timeline?.length) return undefined;
+    const o = audioApiTimelineToSensoryOverlay({
+      lessonId,
+      audioTimeline: sessionMeta.audio_timeline,
+      speechRate: sessionMeta.speech_rate,
+      cognitiveState,
+      hapticTimeline: sessionMeta.haptic_timeline,
+      ambientMode: sessionMeta.ambient_mode,
+    });
+    return o ?? undefined;
+  }, [lessonId, sessionMeta, cognitiveState]);
+
+  const prefetchSensoryOverlay = useMemo((): SensoryOverlay | null => {
+    return (
+      apiSessionSensoryOverlay ??
+      overlayFromPlaybackScript(playbackScript) ??
+      null
+    );
+  }, [apiSessionSensoryOverlay, playbackScript]);
+
+  // Member 3 – wall-clock lessonElapsedMs; session audio_timeline overlay when present, else enrich / GET overlay.
   useSensory({
     lessonId: lessonId ?? "",
     studentId,
@@ -457,6 +501,7 @@ export function LessonAnimationPanel({
       currentTimeMs: currentTime,
       isPlaying,
     },
+    sessionSensoryOverlay: apiSessionSensoryOverlay,
   });
 
   // Ticker
@@ -518,6 +563,21 @@ export function LessonAnimationPanel({
     STATE_CONFIG[cognitiveState as keyof typeof STATE_CONFIG] ??
     STATE_CONFIG.OVERLOAD;
 
+  /** Spoken/caption line: audio_timeline interval only when API sends it — never scene text in gaps. */
+  const lessonCaptionPrimary = useMemo(() => {
+    if (sessionMeta?.audio_timeline && sessionMeta.audio_timeline.length > 0) {
+      const idx = activeAudioTimelineIndex(
+        currentTime,
+        sessionMeta.audio_timeline,
+      );
+      if (idx !== null) {
+        return String(sessionMeta.audio_timeline[idx].text ?? "").trim();
+      }
+      return "";
+    }
+    return String(currentScene?.text ?? "").trim();
+  }, [sessionMeta, currentTime, currentScene]);
+
   const speedFactor =
     cognitiveState === "OVERLOAD"
       ? 0.4
@@ -525,6 +585,10 @@ export function LessonAnimationPanel({
         ? 0.75
         : 1.2;
   const speedLabel = `${speedFactor.toFixed(2)}×`;
+
+  const narrationPrefetch = useNarrationPrefetch(prefetchSensoryOverlay);
+  const sensoryAudioOn = useSensoryStore((s) => s.audioEnabled);
+  const narrationPlaybackError = useSensoryStore((s) => s.narrationPlaybackError);
 
   return (
     <View style={panelSt.root}>
@@ -541,6 +605,18 @@ export function LessonAnimationPanel({
             </Text>
           </View>
         </View>
+      )}
+
+      {!!narrationPlaybackError && (
+        <Pressable
+          style={panelSt.narrationErrBanner}
+          onPress={() =>
+            useSensoryStore.getState().setNarrationPlaybackError(null)
+          }
+        >
+          <Text style={panelSt.narrationErrText}>{narrationPlaybackError}</Text>
+          <Text style={panelSt.narrationErrDismiss}>Dismiss</Text>
+        </Pressable>
       )}
 
       {/* ── Main canvas ── */}
@@ -598,26 +674,88 @@ export function LessonAnimationPanel({
         )}
       </View>
 
-      {/* ── Scene narration (OUTSIDE canvas, below it) ── */}
-      {playbackScript && !loading && !error && currentScene?.text && (
+      {/* ── Caption: audio_timeline[n].text when in [at, at+duration); else scene text (no API timeline). ── */}
+      {playbackScript && !loading && !error && (
         <View style={panelSt.sceneNarration}>
           <View style={panelSt.sceneNumPill}>
             <Text style={panelSt.sceneNumText}>
               {activeSceneIdx + 1}/{playbackScript.scenes.length}
             </Text>
           </View>
-          <Text style={panelSt.sceneNarrationText}>
-            {currentScene.text}
-          </Text>
+          <View style={{ flex: 1 }}>
+            {lessonCaptionPrimary.length > 0 ? (
+              <Text style={panelSt.sceneNarrationText}>
+                {lessonCaptionPrimary}
+              </Text>
+            ) : sessionMeta?.audio_timeline?.length ? (
+              <Text style={panelSt.sceneBetweenCue}>
+                Between narration clips…
+              </Text>
+            ) : (
+              <Text style={panelSt.sceneNarrationText}>
+                {currentScene?.text ?? ""}
+              </Text>
+            )}
+            {sessionMeta?.audio_timeline &&
+              sessionMeta.audio_timeline.length > 0 &&
+              currentScene?.text &&
+              lessonCaptionPrimary !== String(currentScene.text).trim() && (
+                <Text style={panelSt.sceneVisualCue} numberOfLines={2}>
+                  Visual · Scene {activeSceneIdx + 1}: {currentScene.text}
+                </Text>
+              )}
+          </View>
         </View>
       )}
+
+      {playbackScript && !loading && !error && narrationPrefetch.overlay && (
+        <NarrationTimelineCaption
+          overlay={narrationPrefetch.overlay}
+          currentTimeMs={currentTime}
+          segmentStates={narrationPrefetch.segmentStates}
+          audioEnabled={sensoryAudioOn}
+        />
+      )}
+
+      {playbackScript &&
+        !loading &&
+        !error &&
+        sensoryAudioOn &&
+        narrationPrefetch.hasNarration &&
+        narrationPrefetch.prefetchPhase === "error" && (
+          <View style={panelSt.prefetchErrRow}>
+            <Text style={panelSt.prefetchErrText}>
+              {narrationPrefetch.playDisabledReason ?? "Narration failed"}
+            </Text>
+            <Pressable
+              style={panelSt.prefetchRetry}
+              onPress={() => void narrationPrefetch.retryPrefetch()}
+            >
+              <Text style={panelSt.prefetchRetryText}>Retry</Text>
+            </Pressable>
+          </View>
+        )}
 
       {/* ── Controls ── */}
       {playbackScript && (
         <View style={panelSt.controls}>
+          {sensoryAudioOn &&
+            narrationPrefetch.hasNarration &&
+            narrationPrefetch.prefetchPhase === "loading" && (
+              <View style={panelSt.prefetchSpinner}>
+                <ActivityIndicator size="small" color="#2563EB" />
+                <Text style={panelSt.prefetchHint}>Preparing narration…</Text>
+              </View>
+            )}
           <Pressable
-            style={[panelSt.btn, isPlaying && panelSt.btnActive]}
+            disabled={!narrationPrefetch.canStartPlayback}
+            style={[
+              panelSt.btn,
+              isPlaying && panelSt.btnActive,
+              !narrationPrefetch.canStartPlayback && panelSt.btnMuted,
+            ]}
             onPress={() => {
+              if (!narrationPrefetch.canStartPlayback) return;
               if (isPlaying) {
                 setIsPlaying(false);
               } else {
@@ -717,6 +855,25 @@ const panelSt = StyleSheet.create({
   },
   timerText: { fontSize: 10, fontWeight: "600", color: "#64748B" },
 
+  narrationErrBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FEF2F2",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "#FECACA",
+  },
+  narrationErrText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#991B1B",
+    marginRight: 8,
+  },
+  narrationErrDismiss: { fontSize: 12, fontWeight: "700", color: "#B91C1C" },
+
   canvasWrap: {
     width: "100%",
     height: 260,
@@ -811,6 +968,17 @@ const panelSt = StyleSheet.create({
     color: "#1E293B",
     lineHeight: 20,
   },
+  sceneVisualCue: {
+    marginTop: 6,
+    fontSize: 11,
+    color: "#94A3B8",
+    lineHeight: 15,
+  },
+  sceneBetweenCue: {
+    fontSize: 13,
+    fontStyle: "italic",
+    color: "#94A3B8",
+  },
 
   progressBar: {
     position: "absolute",
@@ -846,6 +1014,37 @@ const panelSt = StyleSheet.create({
   },
   btnText: { fontSize: 13, fontWeight: "700", color: "#374151" },
   btnTextActive: { color: "#FFFFFF" },
+  btnMuted: { opacity: 0.45 },
+  prefetchSpinner: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingRight: 4,
+  },
+  prefetchHint: {
+    marginLeft: 6,
+    fontSize: 11,
+    color: "#64748B",
+    maxWidth: 120,
+  },
+  prefetchErrRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: "#FEF2F2",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#FECACA",
+  },
+  prefetchErrText: { flex: 1, fontSize: 12, color: "#991B1B", marginRight: 8 },
+  prefetchRetry: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: "#DC2626",
+    borderRadius: 8,
+  },
+  prefetchRetryText: { fontSize: 12, fontWeight: "700", color: "#FFFFFF" },
   speedBox: {
     alignItems: "center",
     paddingHorizontal: 14,
@@ -911,12 +1110,20 @@ export default function LessonPlayerScreen() {
   } = useNeuroState();
   const { logInteraction, triggerPrediction } = useAnalyticsLogger();
 
-  const { script, loading, error, refetch } = useNeuroAdaptiveScript({
+  const { script, sessionMeta, loading, error, refetch } = useNeuroAdaptiveScript({
     lessonId: params.lesson_id,
     studentId: user?.id,
     sessionId: undefined,
     cognitiveState: neuroState.currentState,
   });
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        sensoryManager.onScreenBlurred();
+      };
+    }, []),
+  );
 
   useEffect(() => {
     logInteraction("SECTION_START", {
@@ -1032,6 +1239,7 @@ export default function LessonPlayerScreen() {
           studentId={user?.id}
           sessionId={undefined}
           script={script}
+          sessionMeta={sessionMeta}
           loading={loading}
           error={error}
           onRetry={refetch}

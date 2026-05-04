@@ -345,6 +345,20 @@ export namespace animationApi {
     scenes: NeuroAdaptiveScene[];
   }
 
+  /** Session-level narration timeline (ms from lesson start). Preferred over scene text for TTS/captions. */
+  export interface AudioTimelineItem {
+    at: number;
+    duration: number;
+    text: string;
+  }
+
+  export interface HapticTimelineItem {
+    at: number;
+    scene_id?: string;
+    pattern?: string;
+    [key: string]: unknown;
+  }
+
   export interface NeuroAdaptiveAnimationResponseMeta {
     cognitiveState: string;
     tier?: string;
@@ -363,6 +377,11 @@ export namespace animationApi {
     lesson_id?: string | null;
     session_id?: string | null;
     meta?: NeuroAdaptiveAnimationResponseMeta;
+    /** When present, drives narration, TTS prefetch, and captions (over scene text). */
+    audio_timeline?: AudioTimelineItem[];
+    speech_rate?: "slow" | "normal" | "fast";
+    haptic_timeline?: HapticTimelineItem[];
+    ambient_mode?: "silence" | "40hz_gamma" | "spatial_music";
   }
 
   export interface NeuroAdaptiveAnimationRequest {
@@ -412,6 +431,23 @@ export namespace animationApi {
    * Fetch latest saved neuro-adaptive script for reuse (by student/session).
    * Returns null if backend responds with 404.
    */
+  /** Optional fields returned with neuro-adaptive script (latest / POST) for timelines + TTS. */
+  export type NeuroAdaptiveSessionFields = Pick<
+    NeuroAdaptiveAnimationResponse,
+    "audio_timeline" | "speech_rate" | "haptic_timeline" | "ambient_mode"
+  >;
+
+  export function pickNeuroAdaptiveSessionFields(
+    r: NeuroAdaptiveAnimationResponse,
+  ): NeuroAdaptiveSessionFields {
+    return {
+      audio_timeline: r.audio_timeline,
+      speech_rate: r.speech_rate,
+      haptic_timeline: r.haptic_timeline,
+      ambient_mode: r.ambient_mode,
+    };
+  }
+
   export const getLatestNeuroAdaptiveScript = async (
     studentId: string,
     sessionId?: string,
