@@ -660,6 +660,7 @@ export function LessonAnimationPanel({
               isPlaying={isPlaying}
               script={playbackScript}
               currentTimeMs={currentTime}
+              onTogglePlayRequest={() => setIsPlaying((p) => !p)}
             />
           </>
         )}

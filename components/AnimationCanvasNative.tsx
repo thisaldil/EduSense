@@ -7,6 +7,7 @@ type Props = {
   isPlaying: boolean;
   script?: any | null;
   currentTimeMs?: number;
+  onTogglePlayRequest?: () => void;
 };
 
 // Logical (unscaled) canvas dimensions – the engine works in this coordinate space.
@@ -17,6 +18,7 @@ export function AnimationCanvasNative({
   isPlaying,
   script,
   currentTimeMs,
+  onTogglePlayRequest,
 }: Props) {
   return (
     <View style={styles.container}>
@@ -24,6 +26,7 @@ export function AnimationCanvasNative({
         isPlaying={isPlaying}
         script={script}
         currentTimeMs={currentTimeMs}
+        onTogglePlayRequest={onTogglePlayRequest}
       />
     </View>
   );

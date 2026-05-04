@@ -22,6 +22,8 @@ type Props = {
   isPlaying: boolean;
   script?: any | null;
   currentTimeMs?: number;
+  /** Fired when the user taps the canvas (WebView) to toggle play/pause on mobile. */
+  onTogglePlayRequest?: () => void;
 };
 
 const ANIM_JS = `
@@ -30,6 +32,7 @@ const ANIM_JS = `
   var canvas = document.getElementById("c");
   var ctx = canvas.getContext("2d");
   var W = 800, H = 600;
+  var GROUND_Y = H * 0.65;
   var state = { script: null, playing: false, t: 0, lastTs: null, domain: "generic", hapticLedger: {} };
 
   function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
@@ -41,11 +44,11 @@ const ANIM_JS = `
   function resizeCanvas() {
     var dpr = Math.max(1, window.devicePixelRatio || 1);
     var rect = canvas.getBoundingClientRect();
-    W = Math.max(300, Math.round(rect.width || 800));
-    H = Math.max(220, Math.round(rect.height || 600));
-    canvas.width  = Math.round(W * dpr);
-    canvas.height = Math.round(H * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var displayW = Math.max(300, Math.round(rect.width || 800));
+    var displayH = Math.max(220, Math.round(rect.height || 600));
+    canvas.width  = Math.round(displayW * dpr);
+    canvas.height = Math.round(displayH * dpr);
+    ctx.setTransform(dpr * displayW / W, 0, 0, dpr * displayH / H, 0, 0);
   }
 
   function normalize(raw) {
@@ -61,6 +64,7 @@ const ANIM_JS = `
       sc.startTime = Number(sc.startTime) >= 0 ? Number(sc.startTime) : cursor;
       sc.text      = String(sc.text || "");
       sc.environment = String(sc.environment || "");
+      sc.meta = (s && s.meta && typeof s.meta === "object") ? Object.assign({}, s.meta) : {};
       sc.actors = Array.isArray(sc.actors) ? sc.actors.map(function(a) {
         var actor = Object.assign({}, a || {});
         actor.type      = String(actor.type || "label").toLowerCase().trim();
@@ -77,7 +81,7 @@ const ANIM_JS = `
       return sc;
     });
     if (!scenes.length) {
-      scenes = [{ id:"fallback", startTime:0, duration:6000, text:String(raw.title||"Untitled"), actors:[], environment:"minimal" }];
+      scenes = [{ id:"fallback", startTime:0, duration:6000, text:String(raw.title||"Untitled"), actors:[], environment:"minimal", meta:{} }];
       cursor = 6000;
     }
     scenes.sort(function(a, b) { return a.startTime - b.startTime; });
@@ -112,22 +116,48 @@ const ANIM_JS = `
   // VISUAL_TYPES are every type that has a dedicated draw function.
   // If ANY of these appear in the script's actors we must NOT call inferActors()
   // because that would overlay an entire second set of characters.
-  var VISUAL_TYPES = [
-    "sun","sun_character","plant","plant_character","leaf","tree","root","cloud","waterdrop","water","water_drop",
-    "co2","co2_bubble","o2","oxygen","molecule","air_particle","glucose","glucose_hexagon","bolt","energy","energy_bolt",
-    "rock","planet","earth","cell","chloroplast","bulb","ear","tuning_fork","wave_emitter","rabbit","lion","animal",
-    "line","arrow"
-  ];
+  var VISUAL_TYPES_SET = new Set([
+    "sun","plant","root","cloud","waterdrop","water","co2","oxygen","glucose","bolt",
+    "arrow","line","rock","planet","earth","volcano","molecule","bulb","ear","animal","bird",
+    "leaf","tree","cell","chloroplast","rabbit","lion","energy",
+    "sun_character","plant_character","co2_bubble","water_drop","energy_bolt",
+    "glucose_hexagon","tuning_fork","wave_emitter","air_particle",
+    "magnet_bar","circuit_bulb","water_cycle_cloud","rock_layer"
+  ]);
   var TYPE_ALIAS = {
-    sun_character: "sun",
-    plant_character: "plant",
-    co2_bubble: "co2",
-    water_drop: "waterdrop",
-    energy_bolt: "bolt",
-    glucose_hexagon: "glucose",
-    tuning_fork: "ear",
-    wave_emitter: "line",
-    air_particle: "molecule"
+    sun_character: "sun_character",
+    plant_character: "plant_character",
+    co2_bubble: "co2_bubble",
+    co2bubble: "co2_bubble",
+    water_drop: "water_drop",
+    energy_bolt: "energy_bolt",
+    glucose_hexagon: "glucose_hexagon",
+    tuning_fork: "tuning_fork",
+    wave_emitter: "wave_emitter",
+    air_particle: "air_particle",
+    magnet_bar: "magnet_bar",
+    circuit_bulb: "circuit_bulb",
+    water_cycle_cloud: "water_cycle_cloud",
+    rock_layer: "rock_layer",
+    star: "sun",
+    leaf: "plant",
+    tree: "plant",
+    earth: "planet",
+    droplet: "waterdrop",
+    h2o: "waterdrop",
+    water: "waterdrop",
+    waterdrop: "waterdrop",
+    carbondioxide: "co2",
+    carbon_dioxide: "co2",
+    o2: "oxygen",
+    molecule_o2: "oxygen",
+    glucose_molecule: "glucose",
+    energy: "bolt",
+    lightning: "bolt",
+    herbivore: "animal",
+    carnivore: "animal",
+    producer: "plant",
+    consumer: "animal",
   };
   function resolveActorType(raw) {
     var k = String(raw || "label").toLowerCase().trim();
@@ -138,8 +168,8 @@ const ANIM_JS = `
     return actors.some(function(a) {
       if (!a) return false;
       var raw = String(a.type || "").toLowerCase();
-      if (VISUAL_TYPES.indexOf(raw) !== -1) return true;
-      return VISUAL_TYPES.indexOf(resolveActorType(raw)) !== -1;
+      if (VISUAL_TYPES_SET.has(raw)) return true;
+      return VISUAL_TYPES_SET.has(resolveActorType(raw));
     });
   }
 
@@ -182,35 +212,164 @@ const ANIM_JS = `
     ];
   }
 
-  // ── Background ──────────────────────────────────────────────────────────────
-  function drawBackground(t) {
-    var top="#B5D9FF", bottom="#ECF6FF", ground="#7C5A45";
-    if (state.domain==="photosynthesis")    { top="#A8E6A1"; bottom="#DFF7D8"; ground="#795548"; }
-    else if (state.domain==="water_cycle")  { top="#9EDBFF"; bottom="#E2F5FF"; ground="#8D6E63"; }
-    else if (state.domain==="food_chain")   { top="#C9EFA5"; bottom="#F4FCE8"; ground="#7F5539"; }
-    else if (state.domain==="electric_circuit") { top="#1E3A8A"; bottom="#111827"; ground=""; }
-    else if (state.domain==="sound")        { top="#CFE8FF"; bottom="#EFF6FF"; ground=""; }
-    else if (state.domain==="heat_transfer"){ top="#FFD6A5"; bottom="#FFEFD5"; ground=""; }
-
-    var sky = ctx.createLinearGradient(0,0,0,H*0.75);
-    sky.addColorStop(0,top); sky.addColorStop(1,bottom);
-    ctx.fillStyle = sky; ctx.fillRect(0,0,W,H);
-
-    if (ground) {
-      var soil = ctx.createLinearGradient(0,H*0.68,0,H);
-      soil.addColorStop(0,ground); soil.addColorStop(1,"#4E342E");
-      ctx.fillStyle = soil; ctx.fillRect(0,H*0.68,W,H*0.32);
-      ctx.fillStyle = "#5DBB63"; ctx.fillRect(0,H*0.68,W,20);
+  // ── Domain backgrounds (immersive scene, matches web/demo) ─────────────────
+  function drawSimpleCloud(cx, cy, scale) {
+    ctx.save(); ctx.globalAlpha=0.85; ctx.fillStyle="#FFFFFF";
+    var r=22*scale;
+    [[0,0,r],[r*0.9,-r*0.3,r*0.8],[r*1.8,r*0.1,r*0.9],[-r*0.9,-r*0.2,r*0.75]].forEach(function(p){
+      ctx.beginPath(); ctx.arc(cx+p[0],cy+p[1],p[2],0,Math.PI*2); ctx.fill();
+    });
+    ctx.restore();
+  }
+  function drawBiologyBackground(t) {
+    var sky = ctx.createLinearGradient(0,0,0,GROUND_Y);
+    sky.addColorStop(0,"#64B5F6"); sky.addColorStop(1,"#B3E5FC");
+    ctx.fillStyle=sky; ctx.fillRect(0,0,W,GROUND_Y);
+    ctx.fillStyle="#8D6E63"; ctx.fillRect(0,GROUND_Y,W,H-GROUND_Y);
+    ctx.fillStyle="#4CAF50";
+    ctx.beginPath(); ctx.ellipse(W/2,GROUND_Y,W*0.7,26,0,0,Math.PI*2); ctx.fill();
+    ctx.fillRect(0,GROUND_Y,W,24);
+    ctx.strokeStyle="rgba(0,0,0,0.06)"; ctx.lineWidth=1;
+    var gi, gy;
+    for (gi=0;gi<4;gi+=1){
+      gy=GROUND_Y+18+gi*((H-GROUND_Y-18)/5);
+      ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(W,gy); ctx.stroke();
     }
-    if (state.domain==="electric_circuit") {
-      ctx.save(); ctx.strokeStyle="rgba(255,255,255,0.08)"; ctx.lineWidth=1;
-      var off=(t*18)%40;
-      for (var gx=-40;gx<=W+40;gx+=40){ ctx.beginPath(); ctx.moveTo(gx+off,0); ctx.lineTo(gx+off,H); ctx.stroke(); }
-      for (var gy=-40;gy<=H+40;gy+=40){ ctx.beginPath(); ctx.moveTo(0,gy+off); ctx.lineTo(W,gy+off); ctx.stroke(); }
-      ctx.restore(); return;
+    drawSimpleCloud(W*0.14,H*0.12,0.9);
+    drawSimpleCloud(W*0.70,H*0.08,0.7);
+    drawSimpleCloud(W*0.44,H*0.15,0.55);
+  }
+  function drawPhysicsBackground(t) {
+    var bg = ctx.createLinearGradient(0,0,0,H);
+    bg.addColorStop(0,"#1A237E"); bg.addColorStop(1,"#283593");
+    ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+    ctx.strokeStyle="rgba(255,255,255,0.04)"; ctx.lineWidth=1;
+    var x, y;
+    for (x=0;x<W;x+=60){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+    for (y=0;y<H;y+=60){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+    ctx.strokeStyle="rgba(41,182,246,0.15)"; ctx.lineWidth=2;
+    ctx.beginPath();
+    for (x=0;x<W;x+=4){
+      y=H/2+Math.sin((x*0.03)+t*2)*30;
+      if (x===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
     }
-    drawCloud(W*0.14+Math.sin(t*0.25)*20, H*0.1, 1, 0.78);
-    drawCloud(W*0.68+Math.cos(t*0.22)*16, H*0.12, 0.85, 0.68);
+    ctx.stroke();
+  }
+  function drawElectricityBackground(t) {
+    ctx.fillStyle="#0D1117"; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle="rgba(255,193,7,0.06)";
+    var px, py;
+    for (px=40;px<W;px+=40) for (py=40;py<H;py+=40){
+      ctx.beginPath(); ctx.arc(px,py,1.5,0,Math.PI*2); ctx.fill();
+    }
+    var glow=ctx.createRadialGradient(W/2,H,0,W/2,H,W*0.6);
+    glow.addColorStop(0,"rgba(255,193,7,0.08)"); glow.addColorStop(1,"rgba(0,0,0,0)");
+    ctx.fillStyle=glow; ctx.fillRect(0,0,W,H);
+  }
+  function drawWaterBackground(t) {
+    var sky=ctx.createLinearGradient(0,0,0,H*0.7);
+    sky.addColorStop(0,"#E3F2FD"); sky.addColorStop(1,"#BBDEFB");
+    ctx.fillStyle=sky; ctx.fillRect(0,0,W,H*0.7);
+    ctx.fillStyle="#1565C0";
+    ctx.beginPath(); ctx.moveTo(0,H*0.7);
+    var x, wy;
+    for (x=0;x<=W;x+=6){
+      wy=H*0.7+Math.sin((x*0.02)+t*1.5)*8;
+      ctx.lineTo(x,wy);
+    }
+    ctx.lineTo(W,H); ctx.lineTo(0,H); ctx.closePath(); ctx.fill();
+    ctx.fillStyle="rgba(66,165,245,0.4)"; ctx.fillRect(0,H*0.72,W,H*0.28);
+  }
+  function drawGeologyBackground(t) {
+    ctx.fillStyle="#FFF8E1"; ctx.fillRect(0,0,W,H*0.3);
+    ctx.fillStyle="#558B2F"; ctx.fillRect(0,H*0.3,W,H*0.08);
+    var layers=["#9E9E9E","#795548","#607D8B","#546E7A"];
+    var i, ly;
+    for (i=0;i<layers.length;i+=1){
+      ly=H*0.38+i*(H*0.155);
+      ctx.fillStyle=layers[i];
+      ctx.fillRect(0,ly,W,H*0.155+2);
+    }
+    var lava=ctx.createRadialGradient(W/2,H,0,W/2,H,W*0.5);
+    lava.addColorStop(0,"rgba(255,87,34,0.2)"); lava.addColorStop(1,"rgba(0,0,0,0)");
+    ctx.fillStyle=lava; ctx.fillRect(0,0,W,H);
+  }
+  function detectBackgroundFromActors(scene) {
+    var types = (scene && Array.isArray(scene.actors) ? scene.actors : []).map(function(a){
+      return String(a && a.type || "").toLowerCase();
+    }).join(" ");
+    if (types.indexOf("plant") >= 0 || types.indexOf("sun_character") >= 0 || types.indexOf("co2_bubble") >= 0 || types.indexOf("water_drop") >= 0 || types.indexOf("root") >= 0 || types.indexOf("glucose_hexagon") >= 0) return "biology";
+    if (types.indexOf("tuning_fork") >= 0 || types.indexOf("wave_emitter") >= 0) return "physics";
+    if (types.indexOf("circuit_bulb") >= 0) return "electricity";
+    if (types.indexOf("water_cycle_cloud") >= 0) return "water";
+    if (types.indexOf("rock_layer") >= 0) return "geology";
+    return "";
+  }
+  function drawDomainBackground(t, scene) {
+    var actorHint = detectBackgroundFromActors(scene);
+    if (actorHint === "biology") { drawBiologyBackground(t); return; }
+    if (actorHint === "physics") { drawPhysicsBackground(t); return; }
+    if (actorHint === "electricity") { drawElectricityBackground(t); return; }
+    if (actorHint === "water") { drawWaterBackground(t); return; }
+    if (actorHint === "geology") { drawGeologyBackground(t); return; }
+
+    var meta = (scene && scene.meta && typeof scene.meta === "object") ? scene.meta : {};
+    var domain = String(meta.domain || "").toLowerCase();
+    var legacy = String(state.domain || "generic").toLowerCase();
+    var actorList = (scene && Array.isArray(scene.actors)) ? scene.actors : [];
+    function actorTypesHasPlant() {
+      var k, ty;
+      for (k=0;k<actorList.length;k+=1){
+        ty=String(actorList[k] && actorList[k].type || "").toLowerCase();
+        if (ty.indexOf("plant") >= 0) return true;
+      }
+      return false;
+    }
+    function hasActorTypes(/* names */) {
+      var names = [].slice.call(arguments);
+      var a, ty, n;
+      for (a=0;a<actorList.length;a+=1){
+        ty=String(actorList[a] && actorList[a].type || "").toLowerCase();
+        for (n=0;n<names.length;n+=1){ if (ty === names[n]) return true; }
+      }
+      return false;
+    }
+    var hasPlant = actorTypesHasPlant();
+    var hasSound = hasActorTypes("tuning_fork","wave_emitter");
+    var hasBulb  = hasActorTypes("circuit_bulb","bolt","bulb");
+    var hasWater = hasActorTypes("water_cycle_cloud");
+    var hasRock  = hasActorTypes("rock_layer");
+    var bioMeta = domain === "biology" || domain === "photosynthesis";
+    var bioLegacy = legacy === "photosynthesis" || legacy === "food_chain" || legacy === "respiration" || legacy === "human_body";
+
+    if (bioMeta || bioLegacy || hasPlant) {
+      drawBiologyBackground(t);
+    } else if (domain === "electricity" || legacy === "electric_circuit" || hasBulb) {
+      drawElectricityBackground(t);
+    } else if (domain === "water" || domain === "water_cycle" || legacy === "water_cycle" || hasWater) {
+      drawWaterBackground(t);
+    } else if (domain === "earth_science" || domain === "geology" || hasRock) {
+      drawGeologyBackground(t);
+    } else if (domain === "physics" || domain === "sound" || legacy === "sound" || hasSound) {
+      drawPhysicsBackground(t);
+    } else if (legacy === "solar_system" || domain === "solar_system") {
+      var darkG = ctx.createLinearGradient(0,0,0,H);
+      darkG.addColorStop(0,"#0F172A"); darkG.addColorStop(1,"#1E1B4B");
+      ctx.fillStyle=darkG; ctx.fillRect(0,0,W,H);
+      ctx.save(); ctx.fillStyle="rgba(255,255,255,0.7)";
+      var si, sx, sy;
+      for (si=0;si<70;si+=1){
+        sx=((si*173.7+31+t*12)%(W+50))-25;
+        sy=(si*97.13+17)%(H*0.94);
+        ctx.globalAlpha=0.25+Math.sin(t*2+si)*0.2;
+        ctx.beginPath(); ctx.arc(sx,sy,0.8+(si%4)*0.5,0,Math.PI*2); ctx.fill();
+      }
+      ctx.restore();
+    } else {
+      var bg = ctx.createLinearGradient(0,0,0,H);
+      bg.addColorStop(0,"#F0F4F8"); bg.addColorStop(1,"#E2E8F0");
+      ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+    }
   }
 
   // ── Shape primitives ────────────────────────────────────────────────────────
@@ -387,6 +546,342 @@ const ANIM_JS = `
     ctx.restore();
   }
 
+  function drawSunCharacter(ctx, cx, cy, size, alpha, t) {
+    var r = size * 0.52;
+    ctx.save(); ctx.globalAlpha = alpha;
+    var grd = ctx.createRadialGradient(cx,cy,r*0.5,cx,cy,r*2.2);
+    grd.addColorStop(0,"rgba(255,235,0,0.5)");
+    grd.addColorStop(0.5,"rgba(255,180,0,0.2)");
+    grd.addColorStop(1,"rgba(255,150,0,0)");
+    ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(cx,cy,r*2.2,0,Math.PI*2); ctx.fill();
+    var i, ang, rLen, inner, outer, g;
+    for(i=0;i<12;i++){
+      ang=(i/12)*Math.PI*2+t*0.4;
+      rLen=r*0.45+Math.sin(t*2+i*0.8)*r*0.1;
+      inner=r+4;
+      outer=inner+rLen;
+      g=ctx.createLinearGradient(
+        cx+Math.cos(ang)*inner,cy+Math.sin(ang)*inner,
+        cx+Math.cos(ang)*outer,cy+Math.sin(ang)*outer);
+      g.addColorStop(0,"rgba(255,215,0,0.95)");
+      g.addColorStop(1,"rgba(255,215,0,0)");
+      ctx.strokeStyle=g; ctx.lineWidth=5; ctx.lineCap="round";
+      ctx.beginPath();
+      ctx.moveTo(cx+Math.cos(ang)*inner,cy+Math.sin(ang)*inner);
+      ctx.lineTo(cx+Math.cos(ang)*outer,cy+Math.sin(ang)*outer);
+      ctx.stroke();
+    }
+    var body=ctx.createRadialGradient(cx-r*0.25,cy-r*0.25,0,cx,cy,r);
+    body.addColorStop(0,"#FFF9C4"); body.addColorStop(0.4,"#FFE000");
+    body.addColorStop(0.8,"#FFA000"); body.addColorStop(1,"#E65100");
+    ctx.fillStyle=body; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="#E65100";
+    ctx.beginPath(); ctx.arc(cx-r*0.3,cy-r*0.15,r*0.12,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx+r*0.3,cy-r*0.15,r*0.12,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="#FFF9C4";
+    ctx.beginPath(); ctx.arc(cx-r*0.28,cy-r*0.17,r*0.05,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx+r*0.32,cy-r*0.17,r*0.05,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle="#E65100"; ctx.lineWidth=r*0.08; ctx.lineCap="round";
+    ctx.beginPath(); ctx.arc(cx,cy+r*0.1,r*0.22,0.1,Math.PI-0.1); ctx.stroke();
+    ctx.fillStyle="rgba(255,100,0,0.2)";
+    ctx.beginPath(); ctx.ellipse(cx-r*0.55,cy+r*0.05,r*0.18,r*0.1,0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx+r*0.55,cy+r*0.05,r*0.18,r*0.1,0,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawLeafShape(ctx, cx, cy, len, halfW, dark, mid) {
+    ctx.fillStyle=mid;
+    ctx.beginPath();
+    ctx.moveTo(cx-len,cy);
+    ctx.bezierCurveTo(cx-len*0.5,cy-halfW,cx,cy-halfW*0.5,cx,cy);
+    ctx.bezierCurveTo(cx,cy+halfW*0.5,cx-len*0.5,cy+halfW,cx-len,cy);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle=dark; ctx.globalAlpha*=0.35;
+    ctx.beginPath();
+    ctx.moveTo(cx-len,cy);
+    ctx.bezierCurveTo(cx-len*0.5,cy,cx,cy+halfW*0.3,cx,cy);
+    ctx.bezierCurveTo(cx-len*0.5,cy+halfW,cx-len*0.5,cy+halfW*0.5,cx-len,cy);
+    ctx.closePath(); ctx.fill(); ctx.globalAlpha/=0.35;
+    ctx.strokeStyle=dark; ctx.lineWidth=1.5; ctx.lineCap="round";
+    ctx.beginPath(); ctx.moveTo(cx-len,cy); ctx.lineTo(cx-len*0.05,cy); ctx.stroke();
+  }
+
+  function drawPlantCharacter(ctx, cx, groundY, size, alpha, t, color) {
+    var sc = (typeof size === "number" && size > 0 ? size : 1) * (H / 600);
+    var sway = Math.sin(t*0.8)*4 * sc;
+    ctx.save(); ctx.globalAlpha=alpha;
+    ctx.translate(cx, GROUND_Y);
+    ctx.save(); ctx.globalAlpha=alpha*0.35;
+    ctx.strokeStyle="#5D4037"; ctx.lineWidth=3*sc; ctx.lineCap="round";
+    [[-18,0,-28,28],[-10,0,-8,32],[10,0,18,30],[18,0,26,26]].forEach(function(seg){
+      ctx.beginPath(); ctx.moveTo(seg[0]*sc,seg[1]*sc); ctx.lineTo(seg[2]*sc,seg[3]*sc); ctx.stroke();
+    }); ctx.restore();
+    ctx.strokeStyle=color||"#6D4C41"; ctx.lineWidth=9*sc; ctx.lineCap="round";
+    ctx.beginPath(); ctx.moveTo(0,0);
+    ctx.bezierCurveTo(sway,-40*sc,sway*0.5,-80*sc,sway*1.2,-130*sc); ctx.stroke();
+    var leafG="#2E7D32", leafL="#66BB6A";
+    ctx.save(); ctx.translate(sway*0.6-10*sc,-80*sc); ctx.rotate(-0.55);
+    drawLeafShape(ctx,0,0,48*sc,22*sc,leafG,leafL); ctx.restore();
+    ctx.save(); ctx.translate(sway*0.8+10*sc,-100*sc); ctx.rotate(0.6); ctx.scale(-1,1);
+    drawLeafShape(ctx,0,0,44*sc,20*sc,leafG,leafL); ctx.restore();
+    ctx.save(); ctx.translate(sway*1.2,-138*sc); ctx.rotate(Math.sin(t*0.5)*0.06);
+    drawLeafShape(ctx,0,0,55*sc,25*sc,leafG,leafL); ctx.restore();
+    var fx=sway*0.7, fy=-55*sc;
+    ctx.fillStyle="#A5D6A7";
+    ctx.beginPath(); ctx.arc(fx,fy,18*sc,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle="#2E7D32"; ctx.lineWidth=2*sc;
+    ctx.beginPath(); ctx.arc(fx,fy,18*sc,0,Math.PI*2); ctx.stroke();
+    ctx.fillStyle="#1B5E20";
+    ctx.beginPath(); ctx.arc(fx-6*sc,fy-4*sc,3*sc,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(fx+6*sc,fy-4*sc,3*sc,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="#FFFFFF";
+    ctx.beginPath(); ctx.arc(fx-5*sc,fy-5*sc,1*sc,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(fx+7*sc,fy-5*sc,1*sc,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle="#1B5E20"; ctx.lineWidth=2*sc; ctx.lineCap="round";
+    ctx.beginPath(); ctx.arc(fx,fy+1*sc,6*sc,0.2,Math.PI-0.2); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawCO2Bubble(ctx, cx, cy, size, alpha, t) {
+    var r = size * 0.52;
+    ctx.save(); ctx.globalAlpha=alpha;
+    ctx.fillStyle="rgba(176,190,197,0.3)"; ctx.strokeStyle="#B0BEC5"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle="#546E7A";
+    ctx.font="bold "+Math.max(10,r*0.65)+"px sans-serif";
+    ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText("CO\u2082",cx,cy);
+    ctx.fillStyle="rgba(255,255,255,0.3)";
+    ctx.beginPath(); ctx.ellipse(cx-r*0.3,cy-r*0.35,r*0.25,r*0.18,-0.5,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawWaterDropCharacter(ctx, cx, cy, size, alpha, t) {
+    var r = size * 0.45;
+    ctx.save(); ctx.globalAlpha=alpha;
+    ctx.fillStyle="#29B6F6"; ctx.strokeStyle="#0288D1"; ctx.lineWidth=1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx,cy-r*1.5);
+    ctx.bezierCurveTo(cx+r,cy-r*0.3,cx+r,cy+r*0.7,cx,cy+r);
+    ctx.bezierCurveTo(cx-r,cy+r*0.7,cx-r,cy-r*0.3,cx,cy-r*1.5);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle="rgba(255,255,255,0.55)";
+    ctx.beginPath(); ctx.ellipse(cx-r*0.3,cy-r*0.6,r*0.28,r*0.4,-0.5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="#0288D1";
+    ctx.beginPath(); ctx.arc(cx-r*0.3,cy+r*0.1,r*0.12,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx+r*0.3,cy+r*0.1,r*0.12,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle="#0288D1"; ctx.lineWidth=r*0.1; ctx.lineCap="round";
+    ctx.beginPath(); ctx.arc(cx,cy+r*0.4,r*0.22,0.1,Math.PI-0.1); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawEnergyBolt(ctx, cx, cy, size, alpha, t, color) {
+    var s = size * 0.55;
+    var pulse = 1 + Math.abs(Math.sin(t*4))*0.12;
+    ctx.save(); ctx.globalAlpha=alpha;
+    ctx.translate(cx,cy); ctx.scale(pulse,pulse);
+    ctx.shadowColor="#CE93D8"; ctx.shadowBlur=20;
+    ctx.fillStyle=color||"#AB47BC";
+    ctx.beginPath();
+    ctx.moveTo(s*0.25,-s); ctx.lineTo(-s*0.3,s*0.1); ctx.lineTo(s*0.08,s*0.1);
+    ctx.lineTo(-s*0.25,s); ctx.lineTo(s*0.38,-s*0.05); ctx.lineTo(-s*0.05,-s*0.05);
+    ctx.closePath(); ctx.fill();
+    ctx.shadowBlur=0;
+    ctx.fillStyle="#CE93D8"; ctx.globalAlpha=alpha*0.5;
+    ctx.beginPath();
+    ctx.moveTo(s*0.1,-s*0.8); ctx.lineTo(-s*0.1,s*0.05); ctx.lineTo(s*0.05,s*0.05);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawGlucoseHexagon(ctx, cx, cy, size, alpha, t, color) {
+    var r = size * 0.52;
+    var pulse = 1 + Math.sin(t*1.8)*0.06;
+    ctx.save(); ctx.globalAlpha=alpha;
+    ctx.translate(cx,cy); ctx.scale(pulse,pulse);
+    var glow=ctx.createRadialGradient(0,0,r*0.5,0,0,r*1.8);
+    glow.addColorStop(0,"rgba(255,143,0,0.35)"); glow.addColorStop(1,"rgba(255,143,0,0)");
+    ctx.fillStyle=glow; ctx.beginPath(); ctx.arc(0,0,r*1.8,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=alpha;
+    ctx.fillStyle=color||"#FF8F00"; ctx.strokeStyle="#E65100"; ctx.lineWidth=2.5;
+    ctx.beginPath();
+    var i, a;
+    for(i=0;i<6;i++){
+      a=(i/6)*Math.PI*2-Math.PI/6;
+      if(i===0) ctx.moveTo(Math.cos(a)*r,Math.sin(a)*r);
+      else ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r);
+    }
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle="#FFD54F"; ctx.globalAlpha=alpha*0.5;
+    ctx.beginPath();
+    for(i=0;i<6;i++){
+      a=(i/6)*Math.PI*2-Math.PI/6; var rr=r*0.55;
+      if(i===0) ctx.moveTo(Math.cos(a)*rr,Math.sin(a)*rr);
+      else ctx.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);
+    }
+    ctx.closePath(); ctx.fill(); ctx.globalAlpha=alpha;
+    ctx.fillStyle="#FFFFFF";
+    ctx.font="bold "+Math.max(8,r*0.38)+"px sans-serif";
+    ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText("C\u2086H\u2081\u2082O\u2086",0,0);
+    ctx.restore();
+  }
+
+  function rrPath(ctx, x, y, w, h, rad) {
+    if (typeof ctx.roundRect === "function") { ctx.beginPath(); ctx.roundRect(x,y,w,h,rad); }
+    else { ctx.beginPath(); ctx.rect(x,y,w,h); }
+  }
+
+  function drawTuningFork(ctx, cx, cy, size, alpha, t) {
+    var s = size * 0.45;
+    var i, va;
+    ctx.save(); ctx.globalAlpha=alpha;
+    ctx.fillStyle="#455A64"; ctx.strokeStyle="#263238"; ctx.lineWidth=2;
+    rrPath(ctx, cx-4, cy+s*0.2, 8, s*0.8, 4); ctx.fill();
+    rrPath(ctx, cx-s*0.35, cy-s, s*0.22, s*0.9, 8); ctx.fill();
+    rrPath(ctx, cx+s*0.13, cy-s, s*0.22, s*0.9, 8); ctx.fill();
+    for(i=1;i<=3;i++){
+      va=Math.sin(t*8+i*0.6)*0.6+0.4;
+      ctx.globalAlpha=alpha*va*0.5;
+      ctx.strokeStyle="#80CBC4"; ctx.lineWidth=1.5;
+      ctx.beginPath();
+      ctx.arc(cx-s*0.5-i*8,cy-s*0.3,i*10,Math.PI*0.4,Math.PI*1.6);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx+s*0.5+i*8,cy-s*0.3,i*10,-Math.PI*0.6,Math.PI*0.6);
+      ctx.stroke();
+    }
+    ctx.globalAlpha=alpha;
+    ctx.restore();
+  }
+
+  function drawWaveEmitter(ctx, cx, cy, size, alpha, t, color) {
+    var base = size * 0.4;
+    var i, r, a;
+    ctx.save();
+    for(i=0;i<4;i++){
+      r = base + i*18 + Math.sin(t*3+i)*6;
+      a = alpha*(1-i*0.22);
+      ctx.globalAlpha=a;
+      ctx.strokeStyle=color||"#29B6F6"; ctx.lineWidth=2.5-i*0.4;
+      ctx.beginPath();
+      ctx.arc(cx,cy,r,-Math.PI*0.7,Math.PI*0.7);
+      ctx.stroke();
+    }
+    ctx.globalAlpha=alpha;
+    ctx.fillStyle=color||"#29B6F6";
+    ctx.beginPath(); ctx.arc(cx,cy,6,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawAirParticle(ctx, cx, cy, size, alpha, t) {
+    var r = size * 0.4;
+    var i, ang, sr;
+    ctx.save(); ctx.globalAlpha=alpha;
+    ctx.fillStyle="#90A4AE";
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="rgba(255,255,255,0.4)";
+    ctx.beginPath(); ctx.arc(cx-r*0.3,cy-r*0.3,r*0.35,0,Math.PI*2); ctx.fill();
+    for(i=0;i<3;i++){
+      ang = t*2+i*(Math.PI*2/3);
+      sr = r*1.8;
+      ctx.globalAlpha=alpha*0.4;
+      ctx.fillStyle="#B0BEC5";
+      ctx.beginPath(); ctx.arc(cx+Math.cos(ang)*sr,cy+Math.sin(ang)*sr,r*0.35,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawMagnetBar(ctx, cx, cy, size, alpha, t) {
+    var w = size * 1.1, h = size * 0.38;
+    var i, r;
+    ctx.save(); ctx.globalAlpha=alpha;
+    for(i=0;i<3;i++){
+      ctx.globalAlpha=alpha*0.25;
+      ctx.strokeStyle=i%2===0?"#EF5350":"#42A5F5"; ctx.lineWidth=1.5;
+      r=(i+1)*20;
+      ctx.beginPath();
+      ctx.arc(cx,cy-h*3,r,0,Math.PI);
+      ctx.stroke();
+    }
+    ctx.globalAlpha=alpha;
+    ctx.fillStyle="#EF5350";
+    rrPath(ctx, cx-w/2, cy-h/2, w/2, h, 6); ctx.fill();
+    ctx.fillStyle="#42A5F5";
+    rrPath(ctx, cx, cy-h/2, w/2, h, 6); ctx.fill();
+    ctx.fillStyle="#FFFFFF";
+    ctx.font="bold "+(h*0.55)+"px sans-serif";
+    ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText("N",cx-w*0.25,cy);
+    ctx.fillText("S",cx+w*0.25,cy);
+    ctx.restore();
+  }
+
+  function drawCircuitBulb(ctx, cx, cy, size, alpha, t) {
+    var r = size * 0.45;
+    var glow = 0.2+Math.max(0,Math.sin(t*5))*0.35;
+    ctx.save(); ctx.globalAlpha=alpha;
+    ctx.fillStyle="rgba(250,204,21,"+glow+")";
+    ctx.beginPath(); ctx.arc(cx,cy,r*1.9,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="#FDE047";
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle="#A16207"; ctx.lineWidth=2; ctx.stroke();
+    ctx.strokeStyle="#92400E"; ctx.lineWidth=1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx-r*0.3,cy+r*0.2);
+    ctx.lineTo(cx-r*0.15,cy-r*0.1); ctx.lineTo(cx,cy+r*0.1);
+    ctx.lineTo(cx+r*0.15,cy-r*0.1); ctx.lineTo(cx+r*0.3,cy+r*0.2);
+    ctx.stroke();
+    ctx.fillStyle="#64748B";
+    ctx.fillRect(cx-r*0.5,cy+r*0.75,r,r*0.7);
+    ctx.restore();
+  }
+
+  function drawWaterCycleCloud(ctx, cx, cy, size, alpha, t) {
+    var r = size * 0.38;
+    var i, dy;
+    ctx.save(); ctx.globalAlpha=alpha;
+    ctx.shadowColor="rgba(100,181,246,0.4)"; ctx.shadowBlur=8;
+    ctx.fillStyle="#FFFFFF";
+    [[0,0,r],[r*0.9,-r*0.3,r*0.8],[r*1.8,r*0.1,r*0.9],[-r*0.9,-r*0.2,r*0.75]].forEach(function(p){
+      ctx.beginPath(); ctx.arc(cx+p[0],cy+p[1],p[2],0,Math.PI*2); ctx.fill();
+    });
+    ctx.shadowBlur=0;
+    ctx.fillStyle="#29B6F6";
+    for(i=0;i<3;i++){
+      dy=(t*60+i*40)%80;
+      ctx.globalAlpha=alpha*(1-dy/80);
+      ctx.beginPath(); ctx.arc(cx-r*0.5+i*r*0.5,cy+r+dy,3,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawRockLayer(ctx, cx, cy, size, alpha, t) {
+    var w = size * 1.4, h = size * 0.8;
+    var layers = ["#9E9E9E","#795548","#607D8B"];
+    var i, ly, lh, x, lava;
+    ctx.save(); ctx.globalAlpha=alpha;
+    layers.forEach(function(col,idx){
+      ly = cy-h/2+idx*(h/3);
+      lh = h/3;
+      ctx.fillStyle=col;
+      ctx.beginPath();
+      ctx.moveTo(cx-w/2,ly);
+      for(x=cx-w/2;x<=cx+w/2;x+=12){
+        ctx.lineTo(x,ly+Math.sin((x+t*10)*0.2)*4);
+      }
+      ctx.lineTo(cx+w/2,ly+lh);
+      ctx.lineTo(cx-w/2,ly+lh);
+      ctx.closePath(); ctx.fill();
+    });
+    lava=ctx.createRadialGradient(cx,cy+h/2,0,cx,cy+h/2,w*0.4);
+    lava.addColorStop(0,"rgba(255,87,34,0.5)");
+    lava.addColorStop(1,"rgba(255,87,34,0)");
+    ctx.fillStyle=lava;
+    ctx.beginPath(); ctx.ellipse(cx,cy+h/2,w*0.4,h*0.2,0,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
   function drawLabel(text,x,y,alpha,color) {
     if (!text) return;
     var fs=13;
@@ -437,13 +932,45 @@ const ANIM_JS = `
 
   function drawActor(actor,alpha,t,index) {
     if (actor.x == null || actor.y == null) return;
+    var rawType = String(actor.type||"").toLowerCase().trim();
+    var type = (rawType === "co2_bubble" || rawType === "co2bubble") ? "co2_bubble" : resolveActorType(actor.type);
     var m=actorMotion(actor,t,index);
-    var x=actor.x+m.dx, y=actor.y+m.dy, size=(actor.size||40)*m.scale, type=resolveActorType(actor.type);
+    var metaphorDef = { sun_character:52, plant_character:60, co2_bubble:28, water_drop:32, energy_bolt:34, glucose_hexagon:36, tuning_fork:40, wave_emitter:44, air_particle:16, magnet_bar:50, circuit_bulb:38, water_cycle_cloud:48, rock_layer:60 };
+    var defSz = metaphorDef[type] !== undefined ? metaphorDef[type] : 40;
+    var size = (Number(actor.size) || defSz) * m.scale;
+    var x=actor.x+m.dx, y=actor.y+m.dy;
 
-    if      (type==="sun") drawSun(x,y,size,t,alpha);
+    if (type==="sun_character" || type==="sun") {
+      drawSunCharacter(ctx, W*0.78, H*0.14, 52, alpha, t);
+      return;
+    }
+    if (type==="plant_character") {
+      drawPlantCharacter(ctx, x, GROUND_Y, 1.0, alpha, t, actor.color);
+      return;
+    }
+    if (type==="root") {
+      drawRoot(x, GROUND_Y+20, alpha, actor.color);
+      return;
+    }
+    if (type==="water_drop") {
+      drawWaterDropCharacter(ctx, x, GROUND_Y-30, Number(actor.size)>0?Number(actor.size):32, alpha, t);
+      return;
+    }
+    if (type==="co2_bubble") {
+      drawCO2Bubble(ctx, x, y, Number(actor.size)>0?Number(actor.size):28, alpha, t);
+      return;
+    }
+    if (type==="energy_bolt") drawEnergyBolt(ctx,x,y,size,alpha,t,actor.color);
+    else if (type==="glucose_hexagon") drawGlucoseHexagon(ctx,x,y,size,alpha,t,actor.color);
+    else if (type==="tuning_fork") drawTuningFork(ctx,x,y,size,alpha,t);
+    else if (type==="wave_emitter") drawWaveEmitter(ctx,x,y,size,alpha,t,actor.color);
+    else if (type==="air_particle") drawAirParticle(ctx,x,y,size,alpha,t);
+    else if (type==="magnet_bar") drawMagnetBar(ctx,x,y,size,alpha,t);
+    else if (type==="circuit_bulb") drawCircuitBulb(ctx,x,y,size,alpha,t);
+    else if (type==="water_cycle_cloud") drawWaterCycleCloud(ctx,x,y,size,alpha,t);
+    else if (type==="rock_layer") drawRockLayer(ctx,x,y,size,alpha,t);
     else if (type==="plant"||type==="tree") drawPlant(x,y,t,alpha,size/90);
     else if (type==="leaf")                       drawPlant(x,y,t,alpha,size/70);
-    else if (type==="root")                       drawRoot(x,y,alpha,actor.color);
     else if (type==="cloud")                      drawCloud(x,y,size/24,alpha);
     else if (type==="waterdrop"||type==="water") drawWaterDrop(x,y,size*0.5,alpha,actor.color||"#29B6F6");
     else if (type==="co2")   drawCO2(x,y,size*0.52,alpha);
@@ -477,7 +1004,20 @@ const ANIM_JS = `
 
   function drawActors(actors,elapsed,t,scene) {
     var scId = scene&&scene.id!=null ? String(scene.id) : "scene";
+    var sunDrawn = false, plantDrawn = false;
+    var SUN_TYPES = new Set(["sun","sun_character","star"]);
+    var PLANT_TYPES = new Set(["plant","plant_character","leaf","tree"]);
     (actors||[]).forEach(function(actor,index) {
+      var rawTy = String(actor.type||"").toLowerCase().trim();
+      var resTy = resolveActorType(actor.type);
+      if (SUN_TYPES.has(resTy) || SUN_TYPES.has(rawTy)) {
+        if (sunDrawn) return;
+        sunDrawn = true;
+      }
+      if (PLANT_TYPES.has(resTy) || PLANT_TYPES.has(rawTy)) {
+        if (plantDrawn) return;
+        plantDrawn = true;
+      }
       var start=index*180, base=fadeIn(elapsed,start,520), alpha=base, current=null;
       if (Array.isArray(actor.timeline) && actor.timeline.length) {
         var tl=actor.timeline.filter(function(s){ return s&&Number.isFinite(s.at); })
@@ -546,18 +1086,19 @@ const ANIM_JS = `
   function drawCaption(sceneText,stepLabel,elapsed) {
     var text=stepLabel||sceneText; if(!text) return;
     var alpha=fadeIn(elapsed,80,420); if(alpha<=0.01) return;
-    var barH=46,barY=H-barH-10,barX=W*0.04,barW=W*0.92;
+    var bannerH=Math.round(H*0.075), bannerY=H-bannerH;
+    var fontSize=Math.round(W*0.022);
+    fontSize=Math.max(12,fontSize);
     ctx.save(); ctx.globalAlpha=alpha;
-    var grad=ctx.createLinearGradient(0,barY,0,barY+barH);
-    grad.addColorStop(0,"rgba(15,23,42,0.62)"); grad.addColorStop(1,"rgba(2,6,23,0.9)");
-    ctx.fillStyle=grad;
-    if(ctx.roundRect){ ctx.beginPath(); ctx.roundRect(barX,barY,barW,barH,12); ctx.fill(); }
-    else { ctx.fillRect(barX,barY,barW,barH); }
-    ctx.fillStyle="#FFFFFF"; ctx.font="600 14px sans-serif";
+    ctx.fillStyle="rgba(15,23,42,0.88)";
+    ctx.fillRect(0,bannerY,W,bannerH);
+    ctx.fillStyle="#F8FAFC";
+    ctx.font="bold "+fontSize+"px sans-serif";
     ctx.textAlign="center"; ctx.textBaseline="middle";
-    var maxW=barW-36, out=text;
+    var pad=Math.round(W*0.045);
+    var maxW=W-pad*2, out=text;
     while(ctx.measureText(out).width>maxW&&out.length>12) out=out.slice(0,-4)+"...";
-    ctx.fillText(out,barX+barW*0.5,barY+barH*0.5);
+    ctx.fillText(out,W*0.5,bannerY+bannerH*0.5);
     ctx.restore();
   }
 
@@ -569,7 +1110,7 @@ const ANIM_JS = `
     var time=elapsed*0.001, duration=scene.duration||6000;
 
     ctx.clearRect(0,0,W,H);
-    drawBackground(time);
+    drawDomainBackground(time, scene);
 
     var rawActors=Array.isArray(scene.actors)?scene.actors:[];
 
@@ -631,6 +1172,15 @@ const ANIM_JS = `
     } catch(err){ post({debug:String(err&&err.message?err.message:err)}); }
   };
 
+  function togglePlayPause() {
+    post({ type: "TOGGLE_PLAY" });
+  }
+  canvas.addEventListener("click", togglePlayPause);
+  canvas.addEventListener("touchstart", function(e) {
+    e.preventDefault();
+    togglePlayPause();
+  }, { passive: false });
+
   window.addEventListener("resize",resizeCanvas);
   resizeCanvas();
   requestAnimationFrame(tick);
@@ -638,7 +1188,32 @@ const ANIM_JS = `
 })();\n`;
 
 function makeHtml() {
-  return `<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" /><style>*{box-sizing:border-box;margin:0;padding:0}html,body{width:100%;height:100%;overflow:hidden;background:#0f172a}canvas{width:100%;height:100%;display:block;touch-action:none}</style></head><body><canvas id="c"></canvas><script>${ANIM_JS}</script></body></html>`;
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<style>
+*{box-sizing:border-box}
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #0F172A;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+</style>
+</head>
+<body><canvas id="c"></canvas><script>${ANIM_JS}</script></body>
+</html>`;
 }
 
 function inject(payload: object): string {
@@ -662,14 +1237,15 @@ export function AnimationCanvasWebView({
   isPlaying,
   script,
   currentTimeMs,
+  onTogglePlayRequest,
 }: Props) {
   const webViewRef = useRef<any>(null);
   const readyRef = useRef(false);
   const prevTimeRef = useRef<number | undefined>(undefined);
   const htmlRef = useRef(makeHtml());
-  const propsRef = useRef({ isPlaying, script, currentTimeMs });
+  const propsRef = useRef({ isPlaying, script, currentTimeMs, onTogglePlayRequest });
   useEffect(() => {
-    propsRef.current = { isPlaying, script, currentTimeMs };
+    propsRef.current = { isPlaying, script, currentTimeMs, onTogglePlayRequest };
   });
 
   const sendInit = useCallback((webView: any) => {
@@ -727,6 +1303,9 @@ export function AnimationCanvasWebView({
             const payload = JSON.parse(event.nativeEvent.data ?? "{}");
             if (payload.type === "HAPTIC") {
               playHapticFromPayload(payload.style);
+            }
+            if (payload.type === "TOGGLE_PLAY") {
+              propsRef.current.onTogglePlayRequest?.();
             }
             if (payload.ready && script && webViewRef.current)
               sendInit(webViewRef.current);

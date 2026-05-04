@@ -34,9 +34,7 @@ export function AnimationCanvasNative({
         ...normalizedScript,
         scenes: (normalizedScript.scenes || []).map((scene: any) => ({
           ...scene,
-          actors: (scene.actors || []).filter(
-            (actor: any) => actor && !actor.text,
-          ),
+          actors: (scene.actors || []).filter(Boolean),
         })),
       };
     } catch {

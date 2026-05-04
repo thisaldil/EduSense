@@ -5,21 +5,34 @@
 
 import {
   C,
+  drawAirParticle,
   drawArrow,
   drawBolt,
   drawCO2,
+  drawCO2Bubble,
+  drawCircuitBulb,
   drawCloud,
   drawConceptPill,
   drawEducationCard,
+  drawEnergyBolt,
   drawGlucose,
+  drawGlucoseHexagon,
+  drawMagnetBar,
   drawO2,
   drawPlanet,
+  drawPlantCharacter,
   drawRock,
+  drawRockLayer,
   drawSol,
+  drawSunCharacter,
   drawSunny,
   drawThermometer,
+  drawTuningFork,
   drawVolcano,
+  drawWaterCycleCloud,
   drawWaterDrop,
+  drawWaterDropCharacter,
+  drawWaveEmitter,
 } from "./core/shapes";
 import {
   computeTimelineAlpha,
@@ -41,33 +54,24 @@ export type DrawFn = (
 ) => void;
 
 const TYPE_ALIAS: Record<string, string> = {
-  water_drop: "waterdrop",
   droplet: "waterdrop",
   h2o: "waterdrop",
   carbondioxide: "co2",
   carbon_dioxide: "co2",
-  co2_bubble: "co2",
   oxygen: "oxygen",
   o2: "oxygen",
   molecule_o2: "oxygen",
   star: "sun",
-  sun_character: "sun",
   lightning: "bolt",
   energy: "bolt",
-  energy_bolt: "bolt",
   earth: "planet",
   tree: "plant",
   leaf: "plant",
-  plant_character: "plant",
   herbivore: "animal",
   carnivore: "animal",
   producer: "plant",
   consumer: "animal",
   glucose_molecule: "glucose",
-  glucose_hexagon: "glucose",
-  tuning_fork: "ear",
-  wave_emitter: "line",
-  air_particle: "molecule",
 };
 
 const DEFAULT_POSITIONS: Record<string, { x: number; y: number }> = {
@@ -92,10 +96,25 @@ const DEFAULT_POSITIONS: Record<string, { x: number; y: number }> = {
   bulb: { x: 0.72, y: 0.45 },
   ear: { x: 0.8, y: 0.5 },
   animal: { x: 0.56, y: 0.72 },
+  sun_character: { x: 0.78, y: 0.14 },
+  plant_character: { x: 0.32, y: 0.72 },
+  co2_bubble: { x: 0.66, y: 0.28 },
+  water_drop: { x: 0.22, y: 0.62 },
+  energy_bolt: { x: 0.56, y: 0.36 },
+  glucose_hexagon: { x: 0.68, y: 0.58 },
+  tuning_fork: { x: 0.38, y: 0.44 },
+  wave_emitter: { x: 0.54, y: 0.44 },
+  air_particle: { x: 0.62, y: 0.38 },
+  magnet_bar: { x: 0.5, y: 0.46 },
+  circuit_bulb: { x: 0.64, y: 0.42 },
+  water_cycle_cloud: { x: 0.5, y: 0.18 },
+  rock_layer: { x: 0.5, y: 0.74 },
 };
 
 function resolveType(rawType: any): string {
-  const normalized = String(rawType || "label").toLowerCase().trim();
+  const normalized = String(rawType || "label")
+    .toLowerCase()
+    .trim();
   return TYPE_ALIAS[normalized] || normalized;
 }
 
@@ -104,7 +123,12 @@ function defaultPoint(type: string, W: number, H: number) {
   return { x: slot.x * W, y: slot.y * H };
 }
 
-function drawFallbackAnimal(ctx: Ctx, actor: any, alpha: number, label: string) {
+function drawFallbackAnimal(
+  ctx: Ctx,
+  actor: any,
+  alpha: number,
+  label: string,
+) {
   const x = actor.x;
   const y = actor.y;
   const r = Math.max(16, (actor.size ?? 42) * 0.42);
@@ -173,7 +197,14 @@ function drawBulb(ctx: Ctx, actor: any, alpha: number, t: number) {
   ctx.restore();
 }
 
-function drawLabelActor(ctx: Ctx, actor: any, alpha: number, t: number, W: number, H: number) {
+function drawLabelActor(
+  ctx: Ctx,
+  actor: any,
+  alpha: number,
+  t: number,
+  W: number,
+  H: number,
+) {
   const text = String(actor.text || "").trim();
   const cx = actor.x;
   const cy = actor.y;
@@ -215,7 +246,14 @@ function drawLabelActor(ctx: Ctx, actor: any, alpha: number, t: number, W: numbe
     return;
   }
 
-  drawConceptPill(ctx, cx, cy, alpha, actor.color || C.arrow, text || "Concept");
+  drawConceptPill(
+    ctx,
+    cx,
+    cy,
+    alpha,
+    actor.color || C.arrow,
+    text || "Concept",
+  );
 }
 
 export const ACTOR_RENDERERS: Record<string, DrawFn> = {
@@ -264,9 +302,12 @@ export const ACTOR_RENDERERS: Record<string, DrawFn> = {
     ctx.restore();
   },
 
-  sun: (ctx, actor, alpha, t) => drawSol(ctx, actor.x, actor.y, actor.size ?? 52, t, alpha),
-  cloud: (ctx, actor, alpha) => drawCloud(ctx, actor.x, actor.y, (actor.size ?? 48) / 24, alpha),
-  plant: (ctx, actor, alpha, t) => drawSunny(ctx, actor.x, actor.y, t, true, actor.scale ?? 1, alpha),
+  sun: (ctx, actor, alpha, t) =>
+    drawSol(ctx, actor.x, actor.y, actor.size ?? 52, t, alpha),
+  cloud: (ctx, actor, alpha) =>
+    drawCloud(ctx, actor.x, actor.y, (actor.size ?? 48) / 24, alpha),
+  plant: (ctx, actor, alpha, t) =>
+    drawSunny(ctx, actor.x, actor.y, t, true, actor.scale ?? 1, alpha),
   root: (ctx, actor, alpha) => {
     const cx = actor.x;
     const cy = actor.y;
@@ -275,7 +316,12 @@ export const ACTOR_RENDERERS: Record<string, DrawFn> = {
     ctx.strokeStyle = actor.color || "#5D4037";
     ctx.lineWidth = 3.5;
     ctx.lineCap = "round";
-    [[-42, 46], [-18, 56], [10, 58], [35, 46]].forEach(([dx, dy]) => {
+    [
+      [-42, 46],
+      [-18, 56],
+      [10, 58],
+      [35, 46],
+    ].forEach(([dx, dy]) => {
       ctx.beginPath();
       ctx.moveTo(cx, cy);
       ctx.lineTo(cx + dx, cy + dy);
@@ -284,41 +330,107 @@ export const ACTOR_RENDERERS: Record<string, DrawFn> = {
     ctx.restore();
   },
   waterdrop: (ctx, actor, alpha) =>
-    drawWaterDrop(ctx, actor.x, actor.y, (actor.size ?? 34) * 0.5, alpha, actor.color || C.water),
+    drawWaterDrop(
+      ctx,
+      actor.x,
+      actor.y,
+      (actor.size ?? 34) * 0.5,
+      alpha,
+      actor.color || C.water,
+    ),
   water: (ctx, actor, alpha) =>
-    drawWaterDrop(ctx, actor.x, actor.y, (actor.size ?? 34) * 0.5, alpha, actor.color || C.water),
-  co2: (ctx, actor, alpha) => drawCO2(ctx, actor.x, actor.y, (actor.size ?? 36) * 0.52, alpha),
+    drawWaterDrop(
+      ctx,
+      actor.x,
+      actor.y,
+      (actor.size ?? 34) * 0.5,
+      alpha,
+      actor.color || C.water,
+    ),
+  co2: (ctx, actor, alpha) =>
+    drawCO2(ctx, actor.x, actor.y, (actor.size ?? 36) * 0.52, alpha),
   glucose: (ctx, actor, alpha, t) =>
-    drawGlucose(ctx, actor.x, actor.y, (actor.size ?? 40) * 0.55, alpha, t, actor.color || C.glucose),
+    drawGlucose(
+      ctx,
+      actor.x,
+      actor.y,
+      (actor.size ?? 40) * 0.55,
+      alpha,
+      t,
+      actor.color || C.glucose,
+    ),
   bolt: (ctx, actor, alpha) =>
-    drawBolt(ctx, actor.x, actor.y, (actor.size ?? 38) * 0.55, alpha, actor.color || C.bolt),
-  oxygen: (ctx, actor, alpha) => drawO2(ctx, actor.x, actor.y, (actor.size ?? 30) * 0.55, alpha),
+    drawBolt(
+      ctx,
+      actor.x,
+      actor.y,
+      (actor.size ?? 38) * 0.55,
+      alpha,
+      actor.color || C.bolt,
+    ),
+  oxygen: (ctx, actor, alpha) =>
+    drawO2(ctx, actor.x, actor.y, (actor.size ?? 30) * 0.55, alpha),
   rock: (ctx, actor, alpha) =>
-    drawRock(ctx, actor.x, actor.y, (actor.size ?? 44) * 0.52, alpha, actor.color || C.rock),
+    drawRock(
+      ctx,
+      actor.x,
+      actor.y,
+      (actor.size ?? 44) * 0.52,
+      alpha,
+      actor.color || C.rock,
+    ),
   planet: (ctx, actor, alpha) =>
-    drawPlanet(ctx, actor.x, actor.y, (actor.size ?? 48) * 0.55, alpha, actor.color || "#42A5F5"),
-  volcano: (ctx, actor, alpha) => drawVolcano(ctx, actor.x, actor.y, actor.size ?? 62, alpha),
+    drawPlanet(
+      ctx,
+      actor.x,
+      actor.y,
+      (actor.size ?? 48) * 0.55,
+      alpha,
+      actor.color || "#42A5F5",
+    ),
+  volcano: (ctx, actor, alpha) =>
+    drawVolcano(ctx, actor.x, actor.y, actor.size ?? 62, alpha),
   thermometer: (ctx, actor, alpha) =>
-    drawThermometer(ctx, actor.x, actor.y, actor.size ?? 1, alpha, actor.temp ?? 0.5),
+    drawThermometer(
+      ctx,
+      actor.x,
+      actor.y,
+      actor.size ?? 1,
+      alpha,
+      actor.temp ?? 0.5,
+    ),
   molecule: (ctx, actor, alpha, t, W, H) => {
-    const mt = String(actor.moleculeType || actor.extra?.moleculeType || "").toLowerCase();
-    if (mt.includes("co2")) return ACTOR_RENDERERS.co2(ctx, actor, alpha, t, W, H);
-    if (mt.includes("oxygen") || mt === "o2") return ACTOR_RENDERERS.oxygen(ctx, actor, alpha, t, W, H);
-    if (mt.includes("glucose") || mt.includes("sugar")) return ACTOR_RENDERERS.glucose(ctx, actor, alpha, t, W, H);
+    const mt = String(
+      actor.moleculeType || actor.extra?.moleculeType || "",
+    ).toLowerCase();
+    if (mt.includes("co2"))
+      return ACTOR_RENDERERS.co2(ctx, actor, alpha, t, W, H);
+    if (mt.includes("oxygen") || mt === "o2")
+      return ACTOR_RENDERERS.oxygen(ctx, actor, alpha, t, W, H);
+    if (mt.includes("glucose") || mt.includes("sugar"))
+      return ACTOR_RENDERERS.glucose(ctx, actor, alpha, t, W, H);
     return ACTOR_RENDERERS.waterdrop(ctx, actor, alpha, t, W, H);
   },
   bulb: (ctx, actor, alpha, t) => drawBulb(ctx, actor, alpha, t),
   ear: (ctx, actor, alpha) => drawSimpleEar(ctx, actor, alpha),
 
-  label: (ctx, actor, alpha, t, W, H) => drawLabelActor(ctx, actor, alpha, t, W, H),
+  label: (ctx, actor, alpha, t, W, H) =>
+    drawLabelActor(ctx, actor, alpha, t, W, H),
 
-  animal: (ctx, actor, alpha) => drawFallbackAnimal(ctx, actor, alpha, actor.label || "Animal"),
-  rabbit: (ctx, actor, alpha) => drawFallbackAnimal(ctx, actor, alpha, "Herbivore"),
-  deer: (ctx, actor, alpha) => drawFallbackAnimal(ctx, actor, alpha, "Herbivore"),
-  goat: (ctx, actor, alpha) => drawFallbackAnimal(ctx, actor, alpha, "Herbivore"),
-  lion: (ctx, actor, alpha) => drawFallbackAnimal(ctx, actor, alpha, "Carnivore"),
-  fox: (ctx, actor, alpha) => drawFallbackAnimal(ctx, actor, alpha, "Carnivore"),
-  snake: (ctx, actor, alpha) => drawFallbackAnimal(ctx, actor, alpha, "Predator"),
+  animal: (ctx, actor, alpha) =>
+    drawFallbackAnimal(ctx, actor, alpha, actor.label || "Animal"),
+  rabbit: (ctx, actor, alpha) =>
+    drawFallbackAnimal(ctx, actor, alpha, "Herbivore"),
+  deer: (ctx, actor, alpha) =>
+    drawFallbackAnimal(ctx, actor, alpha, "Herbivore"),
+  goat: (ctx, actor, alpha) =>
+    drawFallbackAnimal(ctx, actor, alpha, "Herbivore"),
+  lion: (ctx, actor, alpha) =>
+    drawFallbackAnimal(ctx, actor, alpha, "Carnivore"),
+  fox: (ctx, actor, alpha) =>
+    drawFallbackAnimal(ctx, actor, alpha, "Carnivore"),
+  snake: (ctx, actor, alpha) =>
+    drawFallbackAnimal(ctx, actor, alpha, "Predator"),
   bird: (ctx, actor, alpha, t) => {
     const x = actor.x;
     const y = actor.y;
@@ -336,6 +448,94 @@ export const ACTOR_RENDERERS: Record<string, DrawFn> = {
     ctx.stroke();
     ctx.restore();
   },
+
+  sun_character: (ctx, actor, alpha, t) =>
+    drawSunCharacter(ctx, actor.x, actor.y, actor.size ?? 52, alpha, t),
+  plant_character: (ctx, actor, alpha, t) =>
+    drawPlantCharacter(
+      ctx,
+      actor.x,
+      actor.y,
+      actor.size ?? 60,
+      alpha,
+      t,
+      actor.color,
+      !!(actor.glowing ?? actor.extra?.glowing),
+      typeof actor.wobblePhase === "number" ? actor.wobblePhase : undefined,
+    ),
+  co2_bubble: (ctx, actor, alpha, t) =>
+    drawCO2Bubble(ctx, actor.x, actor.y, actor.size ?? 28, alpha, t),
+  water_drop: (ctx, actor, alpha, t) =>
+    drawWaterDropCharacter(
+      ctx,
+      actor.x,
+      actor.y,
+      actor.size ?? 32,
+      alpha,
+      t,
+      actor.color,
+    ),
+
+  energy_bolt: (ctx, actor, alpha, t) =>
+    drawEnergyBolt(
+      ctx,
+      actor.x,
+      actor.y,
+      actor.size ?? 34,
+      alpha,
+      t,
+      actor.color,
+    ),
+  glucose_hexagon: (ctx, actor, alpha, t) =>
+    drawGlucoseHexagon(
+      ctx,
+      actor.x,
+      actor.y,
+      actor.size ?? 36,
+      alpha,
+      t,
+      actor.color,
+    ),
+
+  tuning_fork: (ctx, actor, alpha, t) =>
+    drawTuningFork(ctx, actor.x, actor.y, actor.size ?? 40, alpha, t),
+  wave_emitter: (ctx, actor, alpha, t) =>
+    drawWaveEmitter(
+      ctx,
+      actor.x,
+      actor.y,
+      actor.size ?? 44,
+      alpha,
+      t,
+      actor.color,
+    ),
+
+  air_particle: (ctx, actor, alpha, t) =>
+    drawAirParticle(
+      ctx,
+      actor.x,
+      actor.y,
+      actor.size ?? 16,
+      alpha,
+      t,
+      actor.color,
+    ),
+  magnet_bar: (ctx, actor, alpha, t) =>
+    drawMagnetBar(ctx, actor.x, actor.y, actor.size ?? 50, alpha, t),
+  circuit_bulb: (ctx, actor, alpha, t) =>
+    drawCircuitBulb(ctx, actor.x, actor.y, actor.size ?? 38, alpha, t),
+  water_cycle_cloud: (ctx, actor, alpha, t) =>
+    drawWaterCycleCloud(
+      ctx,
+      actor.x,
+      actor.y,
+      actor.size ?? 48,
+      alpha,
+      t,
+      actor.color,
+    ),
+  rock_layer: (ctx, actor, alpha, t) =>
+    drawRockLayer(ctx, actor.x, actor.y, actor.size ?? 60, alpha, t),
 };
 
 function drawUnknownActor(ctx: Ctx, actor: any, alpha: number): void {
@@ -351,7 +551,11 @@ function drawUnknownActor(ctx: Ctx, actor: any, alpha: number): void {
 
 type PositionedActor = any & { type: string; x: number; y: number };
 
-function autoLayoutActors(actors: any[], W: number, H: number): PositionedActor[] {
+function autoLayoutActors(
+  actors: any[],
+  W: number,
+  H: number,
+): PositionedActor[] {
   const counters = new Map<string, number>();
   return (actors || []).map((raw) => {
     const type = resolveType(raw?.type);
@@ -386,19 +590,19 @@ function resolveMotion(actor: any, t: number, index: number) {
     dy = oscillate(t + phase * 0.6, 0.8, -4, 4);
   } else if (anim === "wobble_growth") {
     scale = 1 + Math.abs(Math.sin((t + phase) * 1.5)) * 0.1;
-    dx = oscillate(t + phase, 1.35, -5, 5);
-    dy = oscillate(t + phase * 0.65, 0.95, -4, 4);
-  } else if (anim === "pulse" || anim === "glow" || anim === "shine") {
+    dx = Math.sin((t + phase) * 1.35) * 5;
+    dy = Math.sin((t + phase) * 0.95) * 4;
+  } else if (anim === "pulse" || anim === "glow") {
     scale = pulse(t + phase, 1.8, 0.08, 1);
+  } else if (anim === "shine") {
+    scale = pulse(t + phase, 1.8, 0.06, 1);
   } else if (anim === "rotate" || anim === "spin") {
     rotation = (t + phase) * 0.8;
   } else if (anim === "bounce") {
     dy = -Math.abs(Math.sin((t + phase) * 3.2) * 14);
   } else if (anim === "strike") {
-    const b = -Math.abs(Math.sin((t + phase) * 4.2) * 16);
-    dy = b;
-    const strikePulse = Math.pow(Math.max(0, Math.sin((t + phase) * 9.5)), 2);
-    scale = 1 + strikePulse * 0.22;
+    dy = -Math.abs(Math.sin((t + phase) * 4.2) * 16);
+    scale = 1 + Math.pow(Math.max(0, Math.sin((t + phase) * 9.5)), 2) * 0.22;
   } else if (anim === "fall") {
     dy = Math.min(90, (t * 100) % 120);
     alphaMul = 0.75;
@@ -408,9 +612,18 @@ function resolveMotion(actor: any, t: number, index: number) {
   } else if (anim === "float_in") {
     dx = Math.sin((t + phase) * 0.9) * 12;
     dy = Math.sin((t + phase) * 0.6) * 9;
+  } else if (anim === "absorb") {
+    scale = 1 + Math.sin((t + phase) * 2.4) * 0.08;
+    dy = Math.sin((t + phase) * 1.8) * 3;
   } else if (anim === "vibrate") {
     dx = Math.sin((t + phase) * 38) * 4.2;
     dy = Math.cos((t + phase) * 46) * 3.6;
+  } else if (anim === "wave") {
+    dx = Math.sin((t + phase) * 2.2) * 18;
+    dy = Math.sin((t + phase) * 1.4) * 6;
+  } else if (anim === "attract") {
+    dx = Math.sin((t + phase) * 1.6) * 10;
+    dy = Math.cos((t + phase) * 1.1) * 4;
   } else {
     dy = Math.sin((t + phase) * 0.7) * 3;
   }
