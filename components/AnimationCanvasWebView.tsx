@@ -294,15 +294,28 @@ const ANIM_JS = `
     lava.addColorStop(0,"rgba(255,87,34,0.2)"); lava.addColorStop(1,"rgba(0,0,0,0)");
     ctx.fillStyle=lava; ctx.fillRect(0,0,W,H);
   }
+  function drawHeatBackground(t) {
+    var bg = ctx.createLinearGradient(0,0,0,H);
+    bg.addColorStop(0,"#FFF8E1"); bg.addColorStop(1,"#FFE0B2");
+    ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+    var glow=ctx.createRadialGradient(W/2,H,0,W/2,H,W*0.6);
+    glow.addColorStop(0,"rgba(255,87,34,0.08)"); glow.addColorStop(1,"rgba(0,0,0,0)");
+    ctx.fillStyle=glow; ctx.fillRect(0,0,W,H);
+  }
   function detectBackgroundFromActors(scene) {
     var types = (scene && Array.isArray(scene.actors) ? scene.actors : []).map(function(a){
       return String(a && a.type || "").toLowerCase();
     }).join(" ");
-    if (types.indexOf("plant") >= 0 || types.indexOf("sun_character") >= 0 || types.indexOf("co2_bubble") >= 0 || types.indexOf("water_drop") >= 0 || types.indexOf("root") >= 0 || types.indexOf("glucose_hexagon") >= 0) return "biology";
+    if (types.indexOf("plant") >= 0 || types.indexOf("sun_character") >= 0 ||
+        types.indexOf("co2_bubble") >= 0 || types.indexOf("root") >= 0 ||
+        types.indexOf("glucose_hexagon") >= 0) return "biology";
     if (types.indexOf("tuning_fork") >= 0 || types.indexOf("wave_emitter") >= 0) return "physics";
-    if (types.indexOf("circuit_bulb") >= 0) return "electricity";
+    if (types.indexOf("circuit_bulb") >= 0 &&
+        types.indexOf("thermometer") < 0 &&
+        types.indexOf("molecule") < 0) return "electricity";
     if (types.indexOf("water_cycle_cloud") >= 0) return "water";
     if (types.indexOf("rock_layer") >= 0) return "geology";
+    if (types.indexOf("thermometer") >= 0 || types.indexOf("molecule") >= 0) return "heat";
     return "";
   }
   function drawDomainBackground(t, scene) {
@@ -312,6 +325,7 @@ const ANIM_JS = `
     if (actorHint === "electricity") { drawElectricityBackground(t); return; }
     if (actorHint === "water") { drawWaterBackground(t); return; }
     if (actorHint === "geology") { drawGeologyBackground(t); return; }
+    if (actorHint === "heat") { drawHeatBackground(t); return; }
 
     var meta = (scene && scene.meta && typeof scene.meta === "object") ? scene.meta : {};
     var domain = String(meta.domain || "").toLowerCase();
@@ -1114,9 +1128,8 @@ const ANIM_JS = `
     var windowMs=Math.max(700,duration/steps.length);
     var idx=Math.min(steps.length-1,Math.floor(elapsed/windowMs));
     var local=clamp01((elapsed-idx*windowMs)/(windowMs*0.82));
-    // When real script actors are present, step overlays are faint so they
-    // don't double-paint on top of the properly positioned script actors.
-    var strength=usingInferred?1:0.45;
+    // When script has real actors, step overlays are hidden (no double-paint).
+    var strength=usingInferred?1:0;
     for(var i=0;i<idx;i++) steps[i].draw(1,time,strength);
     steps[idx].draw(easeOut(local),time,strength);
   }
