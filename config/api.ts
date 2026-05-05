@@ -39,7 +39,7 @@ const getApiBaseUrl = (): string => {
       // - Physical device: Use your computer's local IP address
       // Change this to your local IP if testing on a physical device
       // Find your IP: ifconfig | grep "inet " | grep -v 127.0.0.1
-      return "http://192.168.0.73:8000"; // Update this to your local IP for physical devices
+      return "http://10.213.171.1:8000"; // Update this to your local IP for physical devices
       // return "http://10.0.2.2:8000"; // Use this for Android Emulator
     }
     // Default for web or unknown platforms

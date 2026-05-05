@@ -9,7 +9,7 @@
  *   • Bouncy feedback animations
  */
 
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import * as Haptics from "expo-haptics";
 import {
   ActivityIndicator,
@@ -218,7 +218,7 @@ const BounceIn: React.FC<{ children: React.ReactNode; delay?: number }> = ({
 // Task 1 · NLP — Reading & Recall
 // ─────────────────────────────────────────────────────────────
 
-const NLPTask: React.FC<TaskProps> = ({ onComplete }) => {
+const NLPTask: React.FC<TaskProps & { config: typeof NLP_VARIANTS[0] }> = ({ onComplete, config }) => {
   const [phase, setPhase] = useState<"read" | "answer">("read");
   const [countdown, setCountdown] = useState(5);
   const [selected, setSelected] = useState<number | null>(null);
@@ -288,7 +288,7 @@ const NLPTask: React.FC<TaskProps> = ({ onComplete }) => {
     if (selected === null || done) return;
     stopIdle();
     setDone(true);
-    const CORRECT = 1;
+    const CORRECT = config.correctIndex;
     const correct = selected === CORRECT;
     if (!correct) shake();
     const { avg, variability } = computeTimingStats(tapTimes.current);
@@ -306,11 +306,7 @@ const NLPTask: React.FC<TaskProps> = ({ onComplete }) => {
     });
   };
 
-  const options = [
-    { label: "Decomposers", emoji: "🍄" },
-    { label: "Autotrophs", emoji: "🌱" },
-    { label: "Predators", emoji: "🦁" },
-  ];
+  const options = config.options;
 
   return (
     <BounceIn>
@@ -333,12 +329,14 @@ const NLPTask: React.FC<TaskProps> = ({ onComplete }) => {
         {phase === "read" ? (
           <View style={[s.sentenceBox, { borderLeftColor: C.t1Accent }]}>
             <Text style={s.sentenceText}>
-              Plants are called{" "}
-              <Text style={[s.highlight, { color: C.t1Accent }]}>
-                autotrophs
-              </Text>{" "}
-              because they make their own food using sunlight, water, and air.
-              🌿
+              {config.sentence.split(config.highlight).map((part, i, arr) =>
+                i < arr.length - 1 ? (
+                  <React.Fragment key={i}>
+                    {part}
+                    <Text style={[s.highlight, { color: C.t1Accent }]}>{config.highlight}</Text>
+                  </React.Fragment>
+                ) : part
+              )}
             </Text>
             <View style={s.countdownRow}>
               <Text style={s.countdownLabel}>Disappears in </Text>
@@ -351,9 +349,7 @@ const NLPTask: React.FC<TaskProps> = ({ onComplete }) => {
           </View>
         ) : (
           <Animated.View style={{ transform: [{ translateX: shakeAnim }] }}>
-            <Text style={s.questionText}>
-              🤔 What do we call plants that make their own food?
-            </Text>
+            <Text style={s.questionText}>{config.question}</Text>
             <View style={s.optionsCol}>
               {options.map((opt, idx) => (
                 <Pressable
@@ -415,13 +411,7 @@ type PlantZone = {
   isTarget: boolean;
 };
 
-const ROUNDS: Array<{ target: "Leaf" | "Root" }> = [
-  { target: "Leaf" },
-  { target: "Root" },
-  { target: "Leaf" },
-];
-
-const buildZones = (target: "Leaf" | "Root"): PlantZone[] => [
+const buildZonesOld = (target: "Leaf" | "Root"): PlantZone[] => [
   {
     label: "Leaf",
     left: "1%",
@@ -464,7 +454,7 @@ const buildZones = (target: "Leaf" | "Root"): PlantZone[] => [
   },
 ];
 
-const VisualTask: React.FC<TaskProps> = ({ onComplete }) => {
+const VisualTask: React.FC<TaskProps & { config: typeof VISUAL_VARIANTS[0] }> = ({ onComplete, config }) => {
   const [round, setRound] = useState(0);
   const [errors, setErrors] = useState(0);
   const [feedback, setFeedback] = useState<"correct" | "wrong" | null>(null);
@@ -475,6 +465,8 @@ const VisualTask: React.FC<TaskProps> = ({ onComplete }) => {
   const tapTimes = useRef<number[]>([]);
   const { gaps, reset: resetIdle, stop: stopIdle } = useIdleTracker(!done);
 
+  const ROUNDS = config.rounds;
+  const buildZones = config.buildZones;
   const currentTarget = ROUNDS[round]?.target ?? "Leaf";
   const zones = buildZones(currentTarget);
 
@@ -648,7 +640,7 @@ const VisualTask: React.FC<TaskProps> = ({ onComplete }) => {
 // Task 3 · Sensory — Vibration Reaction
 // ─────────────────────────────────────────────────────────────
 
-const SensoryTask: React.FC<TaskProps> = ({ onComplete }) => {
+const SensoryTask: React.FC<TaskProps & { config: typeof SENSORY_VARIANTS[0] }> = ({ onComplete, config }) => {
   const [phase, setPhase] = useState<"idle" | "waiting" | "done">("idle");
   const [round, setRound] = useState(0);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -663,6 +655,7 @@ const SensoryTask: React.FC<TaskProps> = ({ onComplete }) => {
     reset: resetIdle,
     stop: stopIdle,
   } = useIdleTracker(phase !== "done");
+  const PULSE_ROUNDS = config.rounds;
 
   useEffect(
     () => () => {
@@ -760,7 +753,7 @@ const SensoryTask: React.FC<TaskProps> = ({ onComplete }) => {
               📳 Task 3 of 3
             </Text>
           </View>
-          <Text style={s.taskTitle}>Feel the Buzz!</Text>
+          <Text style={s.taskTitle}>{config.label}</Text>
           <Text style={s.taskSubtitle}>
             Tap{" "}
             <Text style={{ fontWeight: "800", color: C.t3Accent }}>
@@ -873,6 +866,110 @@ const STEP_META: Record<
   },
 };
 
+// ─── Task variant pools ───────────────────────────────────────
+
+const NLP_VARIANTS = [
+  {
+    sentence: `Plants are called autotrophs because they make their own food using sunlight, water, and air. 🌿`,
+    highlight: "autotrophs",
+    question: "🤔 What do we call plants that make their own food?",
+    options: [
+      { label: "Decomposers", emoji: "🍄" },
+      { label: "Autotrophs",  emoji: "🌱" },
+      { label: "Predators",   emoji: "🦁" },
+    ],
+    correctIndex: 1,
+  },
+  {
+    sentence: `Animals that eat only plants are called herbivores. A rabbit eating grass is a classic example. 🐇`,
+    highlight: "herbivores",
+    question: "🤔 What are animals that eat only plants called?",
+    options: [
+      { label: "Carnivores",  emoji: "🦁" },
+      { label: "Omnivores",   emoji: "🐻" },
+      { label: "Herbivores",  emoji: "🐇" },
+    ],
+    correctIndex: 2,
+  },
+  {
+    sentence: `The process by which plants make food using sunlight is called photosynthesis. It happens in the leaves. ☀️`,
+    highlight: "photosynthesis",
+    question: "🤔 What is the process plants use to make food from sunlight?",
+    options: [
+      { label: "Respiration",    emoji: "💨" },
+      { label: "Photosynthesis", emoji: "🌞" },
+      { label: "Digestion",      emoji: "🍽️" },
+    ],
+    correctIndex: 1,
+  },
+];
+
+const VISUAL_VARIANTS = [
+  {
+    label: "Plant",
+    rounds: [
+      { target: "Leaf" as const },
+      { target: "Root" as const },
+      { target: "Leaf" as const },
+    ],
+    buildZones: (target: string) => [
+      { label: "Leaf",   left: "1%",  top: "27%", width: "24%", height: "9%", isTarget: target === "Leaf"   },
+      { label: "Root",   left: "1%",  top: "80%", width: "24%", height: "9%", isTarget: target === "Root"   },
+      { label: "Flower", left: "60%", top: "13%", width: "30%", height: "9%", isTarget: false               },
+      { label: "Stem",   left: "14%", top: "57%", width: "20%", height: "8%", isTarget: false               },
+      { label: "Fruit",  left: "57%", top: "51%", width: "20%", height: "8%", isTarget: false               },
+    ],
+  },
+  {
+    label: "Plant",
+    rounds: [
+      { target: "Flower" as const },
+      { target: "Stem"   as const },
+      { target: "Flower" as const },
+    ],
+    buildZones: (target: string) => [
+      { label: "Leaf",   left: "1%",  top: "27%", width: "24%", height: "9%", isTarget: target === "Leaf"   },
+      { label: "Root",   left: "1%",  top: "80%", width: "24%", height: "9%", isTarget: target === "Root"   },
+      { label: "Flower", left: "60%", top: "13%", width: "30%", height: "9%", isTarget: target === "Flower" },
+      { label: "Stem",   left: "14%", top: "57%", width: "20%", height: "8%", isTarget: target === "Stem"   },
+      { label: "Fruit",  left: "57%", top: "51%", width: "20%", height: "8%", isTarget: false               },
+    ],
+  },
+  {
+    label: "Plant",
+    rounds: [
+      { target: "Fruit" as const },
+      { target: "Root"  as const },
+      { target: "Stem"  as const },
+    ],
+    buildZones: (target: string) => [
+      { label: "Leaf",   left: "1%",  top: "27%", width: "24%", height: "9%", isTarget: target === "Leaf"   },
+      { label: "Root",   left: "1%",  top: "80%", width: "24%", height: "9%", isTarget: target === "Root"   },
+      { label: "Flower", left: "60%", top: "13%", width: "30%", height: "9%", isTarget: false               },
+      { label: "Stem",   left: "14%", top: "57%", width: "20%", height: "8%", isTarget: target === "Stem"   },
+      { label: "Fruit",  left: "57%", top: "51%", width: "20%", height: "8%", isTarget: target === "Fruit"  },
+    ],
+  },
+];
+
+const SENSORY_VARIANTS = [
+  { rounds: 3, label: "Feel the Buzz!",    instruction: "Wait for your phone to vibrate" },
+  { rounds: 4, label: "Quick Reflexes!",   instruction: "Tap the moment you feel it" },
+  { rounds: 3, label: "Stay Sharp!",       instruction: "React as fast as you can" },
+];
+
+// ─── Session picker (deterministic per user per day) ──────────
+
+const pickSession = (userId: string) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const seed = [...(userId + today)].reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  return {
+    nlp:     NLP_VARIANTS[seed % NLP_VARIANTS.length],
+    visual:  VISUAL_VARIANTS[(seed + 1) % VISUAL_VARIANTS.length],
+    sensory: SENSORY_VARIANTS[(seed + 2) % SENSORY_VARIANTS.length],
+  };
+};
+
 const BrainSyncScreen: React.FC = () => {
   const [started, setStarted] = useState(false);
   const [step, setStep] = useState<TaskStep>(1);
@@ -884,6 +981,11 @@ const BrainSyncScreen: React.FC = () => {
   const { setBaselineState } = useNeuroState();
   const { resetBuffer } = useAnalyticsLogger();
   const { user, isAuthenticated, isLoading, updateUser } = useAuth();
+
+  const session = useMemo(
+    () => pickSession(user?.id ?? "guest"),
+    [user?.id]
+  );
 
   useEffect(() => {
     Animated.parallel([
@@ -1085,9 +1187,9 @@ const BrainSyncScreen: React.FC = () => {
             </View>
 
             {/* Active task */}
-            {step === 1 && <NLPTask onComplete={handleTaskComplete} />}
-            {step === 2 && <VisualTask onComplete={handleTaskComplete} />}
-            {step === 3 && <SensoryTask onComplete={handleTaskComplete} />}
+            {step === 1 && <NLPTask    config={session.nlp}     onComplete={handleTaskComplete} />}
+            {step === 2 && <VisualTask config={session.visual}  onComplete={handleTaskComplete} />}
+            {step === 3 && <SensoryTask config={session.sensory} onComplete={handleTaskComplete} />}
 
             <Text style={s.privacyNote}>
               🔒 Private · Only used to personalise your lessons
