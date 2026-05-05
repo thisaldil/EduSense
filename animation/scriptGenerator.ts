@@ -4,11 +4,62 @@
  * Updated to match the current actor renderer + domain system.
  */
 
+/**
+ * Paste into LLM / backend prompts so generated scripts match `normalizeScript` + `actorRenderers`.
+ */
+export const GENERATION_PROMPT_CONSTRAINTS = `
+Animation scripts use an 800×600 logical canvas.
+
+Actor whitelist (canonical names — aliases are resolved at render time; prefer these tokens):
+sun, plant, root, cloud, waterdrop, co2, oxygen, glucose, bolt, arrow, line, label,
+animal, planet, molecule, cell, rock, thermometer, volcano, bulb, ear, bird, fish, frog, snake.
+
+Rules:
+- Never place both sun and star in one scene (same renderer).
+- Prefer plant over leaf/tree for foliage (leaf aliases to plant).
+- Prefer planet over earth (earth aliases to planet).
+- Every actor should include a timeline with at least fade-in, e.g.
+  [{ "at": 0, "action": "appear", "alpha": 0 }, { "at": 500, "action": "appear", "alpha": 1 }]
+- Keep coordinates inside margins: x between 40 and 760, y between 40 and 560.
+- Labels must set non-empty "text". For CO₂ / O₂ / H₂O / glucose formulas prefer typed actors:
+  co2, oxygen, waterdrop, glucose — not plain labels.
+- Do not duplicate the glucose formula as a separate label on top of a glucose actor.
+- Use animal.label for short captions (e.g. "Herbivore").
+- Stagger dense scenes (5+ actors): timeline "at" offsets ~800ms apart; extend duration to ~10000ms when needed.
+- Each scene's narration should not repeat the same sentence verbatim in another scene.
+`.trim();
+
 export const ENGINE_CAPABILITIES = {
   actors: [
-    "leaf", "root", "plant", "cell", "molecule", "sun", "glucose", "arrow", "label", "line",
-    "planet", "earth", "moon", "star", "animal", "bird", "fish", "frog", "snake", "rock",
-    "cloud", "thermometer", "volcano",
+    "leaf",
+    "root",
+    "plant",
+    "cell",
+    "molecule",
+    "sun",
+    "glucose",
+    "arrow",
+    "label",
+    "line",
+    "planet",
+    "earth",
+    "moon",
+    "star",
+    "animal",
+    "bird",
+    "fish",
+    "frog",
+    "snake",
+    "rock",
+    "cloud",
+    "thermometer",
+    "volcano",
+    "waterdrop",
+    "co2",
+    "oxygen",
+    "bolt",
+    "bulb",
+    "ear",
   ],
   animations: [
     "idle", "appear", "pulse", "sway", "rotate", "vibrate", "shine", "grow", "absorb",
@@ -188,4 +239,5 @@ export function generateScript(concept: any, options: any = {}) {
 export default {
   generateScript,
   ENGINE_CAPABILITIES,
+  GENERATION_PROMPT_CONSTRAINTS,
 };

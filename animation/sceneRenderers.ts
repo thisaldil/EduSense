@@ -5,7 +5,6 @@
 
 import { renderActors } from "./actorRenderers";
 import {
-  DOMAIN_VISUALS,
   detectDomain as detectDomainFromCore,
   type ConceptDomain,
 } from "./core/domainDetector";
@@ -17,7 +16,6 @@ import {
   smoothstep,
 } from "./core/easing";
 import {
-  C,
   drawArrow,
   drawBolt,
   drawCO2,
@@ -60,68 +58,230 @@ function isLabelOnly(actors: any[]): boolean {
   return actors.every((actor) => !actor || String(actor.type || "label").toLowerCase() === "label");
 }
 
+function drawSimpleCloud(ctx: Ctx, cx: number, cy: number, scale: number) {
+  ctx.save();
+  ctx.globalAlpha = 0.85;
+  ctx.fillStyle = "#FFFFFF";
+  const r = 22 * scale;
+  const bumps: [number, number, number][] = [
+    [0, 0, r],
+    [r * 0.9, -r * 0.3, r * 0.8],
+    [r * 1.8, r * 0.1, r * 0.9],
+    [-r * 0.9, -r * 0.2, r * 0.75],
+  ];
+  bumps.forEach(([dx, dy, rad]) => {
+    ctx.beginPath();
+    ctx.arc(cx + dx, cy + dy, rad, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
+function drawBiologyBackground(ctx: Ctx, W: number, H: number) {
+  const sky = ctx.createLinearGradient(0, 0, 0, H * 0.65);
+  sky.addColorStop(0, "#64B5F6");
+  sky.addColorStop(1, "#B3E5FC");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H * 0.65);
+  ctx.fillStyle = "#8D6E63";
+  ctx.fillRect(0, H * 0.65, W, H * 0.35);
+  ctx.fillStyle = "#4CAF50";
+  ctx.beginPath();
+  ctx.ellipse(W / 2, H * 0.65, W * 0.7, 18, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(0, H * 0.65, W, 14);
+  ctx.strokeStyle = "rgba(0,0,0,0.06)";
+  ctx.lineWidth = 1;
+  for (let gi = 0; gi < 4; gi += 1) {
+    const gy = H * 0.68 + gi * ((H - H * 0.68) / 5);
+    ctx.beginPath();
+    ctx.moveTo(0, gy);
+    ctx.lineTo(W, gy);
+    ctx.stroke();
+  }
+  drawSimpleCloud(ctx, W * 0.14, H * 0.12, 0.9);
+  drawSimpleCloud(ctx, W * 0.7, H * 0.08, 0.7);
+  drawSimpleCloud(ctx, W * 0.44, H * 0.15, 0.55);
+}
+
+function drawPhysicsBackground(ctx: Ctx, W: number, H: number, t: number) {
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#1A237E");
+  bg.addColorStop(1, "#283593");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = "rgba(255,255,255,0.04)";
+  ctx.lineWidth = 1;
+  for (let x = 0; x < W; x += 60) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, H);
+    ctx.stroke();
+  }
+  for (let y = 0; y < H; y += 60) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(W, y);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = "rgba(41,182,246,0.15)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let x = 0; x < W; x += 4) {
+    const y = H / 2 + Math.sin(x * 0.03 + t * 2) * 30;
+    if (x === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+
+function drawElectricityBackground(ctx: Ctx, W: number, H: number) {
+  ctx.fillStyle = "#0D1117";
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "rgba(255,193,7,0.06)";
+  for (let x = 40; x < W; x += 40) {
+    for (let y = 40; y < H; y += 40) {
+      ctx.beginPath();
+      ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  const glow = ctx.createRadialGradient(W / 2, H, 0, W / 2, H, W * 0.6);
+  glow.addColorStop(0, "rgba(255,193,7,0.08)");
+  glow.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawWaterBackground(ctx: Ctx, W: number, H: number, t: number) {
+  const sky = ctx.createLinearGradient(0, 0, 0, H * 0.7);
+  sky.addColorStop(0, "#E3F2FD");
+  sky.addColorStop(1, "#BBDEFB");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H * 0.7);
+  ctx.fillStyle = "#1565C0";
+  ctx.beginPath();
+  ctx.moveTo(0, H * 0.7);
+  for (let x = 0; x <= W; x += 6) {
+    const wy = H * 0.7 + Math.sin(x * 0.02 + t * 1.5) * 8;
+    ctx.lineTo(x, wy);
+  }
+  ctx.lineTo(W, H);
+  ctx.lineTo(0, H);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "rgba(66,165,245,0.4)";
+  ctx.fillRect(0, H * 0.72, W, H * 0.28);
+}
+
+function drawGeologyBackground(ctx: Ctx, W: number, H: number) {
+  ctx.fillStyle = "#FFF8E1";
+  ctx.fillRect(0, 0, W, H * 0.3);
+  ctx.fillStyle = "#558B2F";
+  ctx.fillRect(0, H * 0.3, W, H * 0.08);
+  const layers = ["#9E9E9E", "#795548", "#607D8B", "#546E7A"];
+  layers.forEach((col, i) => {
+    const ly = H * 0.38 + i * (H * 0.155);
+    ctx.fillStyle = col;
+    ctx.fillRect(0, ly, W, H * 0.155 + 2);
+  });
+  const lava = ctx.createRadialGradient(W / 2, H, 0, W / 2, H, W * 0.5);
+  lava.addColorStop(0, "rgba(255,87,34,0.2)");
+  lava.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = lava;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawDefaultBackground(ctx: Ctx, W: number, H: number) {
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#F0F4F8");
+  bg.addColorStop(1, "#E2E8F0");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawSolarSystemStars(ctx: Ctx, W: number, H: number, t: number) {
+  ctx.save();
+  ctx.fillStyle = "rgba(255,255,255,0.7)";
+  for (let i = 0; i < 70; i += 1) {
+    const x = ((i * 173.7 + 31 + t * 12) % (W + 50)) - 25;
+    const y = (i * 97.13 + 17) % (H * 0.94);
+    ctx.globalAlpha = 0.25 + Math.sin(t * 2 + i) * 0.2;
+    ctx.beginPath();
+    ctx.arc(x, y, 0.8 + (i % 4) * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function actorListHasType(actors: any[], ...types: string[]) {
+  const set = new Set(types);
+  return actors.some((a) => a && set.has(String(a.type || "").toLowerCase()));
+}
+
+function actorTypesHasPlant(actors: any[]) {
+  return actors.some((a) => {
+    const ty = String(a?.type || "").toLowerCase();
+    return ty.includes("plant");
+  });
+}
+
 function drawDomainBackground(
   ctx: Ctx,
   domain: ConceptDomain,
   W: number,
   H: number,
   t: number,
+  scene: any,
 ) {
-  const theme = DOMAIN_VISUALS[domain] ?? DOMAIN_VISUALS.generic;
-  const sky = ctx.createLinearGradient(0, 0, 0, H * 0.72);
-  sky.addColorStop(0, theme.backgroundTop);
-  sky.addColorStop(1, theme.backgroundBottom);
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, W, H);
+  const meta = scene?.meta && typeof scene.meta === "object" ? scene.meta : {};
+  const metaDomain = String((meta as any).domain || "").toLowerCase();
+  const actors = Array.isArray(scene?.actors) ? scene.actors : [];
+  const hasPlant = actorTypesHasPlant(actors);
+  const hasSound = actorListHasType(actors, "tuning_fork", "wave_emitter");
+  const hasBulb = actorListHasType(actors, "circuit_bulb", "bolt", "bulb");
+  const hasWater = actorListHasType(actors, "water_cycle_cloud");
+  const hasRock = actorListHasType(actors, "rock_layer");
 
-  if (theme.ground) {
-    const soil = ctx.createLinearGradient(0, H * 0.68, 0, H);
-    soil.addColorStop(0, theme.ground);
-    soil.addColorStop(1, "#4E342E");
-    ctx.fillStyle = soil;
-    ctx.fillRect(0, H * 0.68, W, H * 0.32);
-    ctx.fillStyle = C.grass;
-    ctx.fillRect(0, H * 0.68, W, 20);
+  const bioMeta = metaDomain === "biology" || metaDomain === "photosynthesis";
+  const bioLegacy =
+    domain === "photosynthesis" ||
+    domain === "food_chain" ||
+    domain === "respiration" ||
+    domain === "human_body";
+
+  if (bioMeta || bioLegacy || hasPlant) {
+    drawBiologyBackground(ctx, W, H);
+    return;
   }
-
-  if (domain === "solar_system") {
-    ctx.save();
-    ctx.fillStyle = "rgba(255,255,255,0.7)";
-    for (let i = 0; i < 70; i += 1) {
-      const x = ((i * 173.7 + 31 + t * 12) % (W + 50)) - 25;
-      const y = (i * 97.13 + 17) % (H * 0.94);
-      ctx.globalAlpha = 0.25 + Math.sin(t * 2 + i) * 0.2;
-      ctx.beginPath();
-      ctx.arc(x, y, 0.8 + (i % 4) * 0.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.restore();
+  if (metaDomain === "electricity" || domain === "electric_circuit" || hasBulb) {
+    drawElectricityBackground(ctx, W, H);
+    return;
+  }
+  if (metaDomain === "water" || metaDomain === "water_cycle" || domain === "water_cycle" || hasWater) {
+    drawWaterBackground(ctx, W, H, t);
+    return;
+  }
+  if (metaDomain === "earth_science" || metaDomain === "geology" || hasRock) {
+    drawGeologyBackground(ctx, W, H);
+    return;
+  }
+  if (metaDomain === "physics" || metaDomain === "sound" || domain === "sound" || hasSound) {
+    drawPhysicsBackground(ctx, W, H, t);
     return;
   }
 
-  if (domain === "electric_circuit") {
-    ctx.save();
-    ctx.strokeStyle = "rgba(255,255,255,0.08)";
-    ctx.lineWidth = 1;
-    const offset = (t * 18) % 40;
-    for (let x = -40; x <= W + 40; x += 40) {
-      ctx.beginPath();
-      ctx.moveTo(x + offset, 0);
-      ctx.lineTo(x + offset, H);
-      ctx.stroke();
-    }
-    for (let y = -40; y <= H + 40; y += 40) {
-      ctx.beginPath();
-      ctx.moveTo(0, y + offset);
-      ctx.lineTo(W, y + offset);
-      ctx.stroke();
-    }
-    ctx.restore();
+  if (metaDomain === "solar_system" || domain === "solar_system") {
+    const dark = ctx.createLinearGradient(0, 0, 0, H);
+    dark.addColorStop(0, "#0F172A");
+    dark.addColorStop(1, "#1E1B4B");
+    ctx.fillStyle = dark;
+    ctx.fillRect(0, 0, W, H);
+    drawSolarSystemStars(ctx, W, H, t);
     return;
   }
 
-  drawCloud(ctx, W * 0.14 + Math.sin(t * 0.25) * 20, H * 0.1, 1, 0.8);
-  drawCloud(ctx, W * 0.68 + Math.cos(t * 0.22) * 18, H * 0.12, 0.85, 0.72);
+  drawDefaultBackground(ctx, W, H);
 }
 
 function inferActorsFromText(
@@ -770,7 +930,7 @@ export function renderUniversalScene(
   const text = String(scene?.text || "");
   const duration = typeof scene?.duration === "number" && scene.duration > 0 ? scene.duration : 6000;
 
-  drawDomainBackground(ctx, domain, W, H, t);
+  drawDomainBackground(ctx, domain, W, H, t, scene);
 
   const rawActors = Array.isArray(scene?.actors) ? scene.actors : [];
   const labelOnly = isLabelOnly(rawActors);

@@ -1,5 +1,6 @@
 import { animationDebug, animationWarn } from "./debug";
 import { isKnownAnimation, resolveAnimationName } from "./animationResolver";
+import { repairSceneActors } from "../scriptRepair";
 import type {
   BackendActor,
   BackendAnimationScript,
@@ -33,7 +34,7 @@ function normalizeEnvironment(value: unknown): SceneEnvironment {
 
 function defaultPosition(type: string) {
   const t = type.toLowerCase();
-  if (t === "sun" || t === "star") return { x: 650, y: 110 };
+  if (t === "sun" || t === "star") return { x: 620, y: 82 };
   if (t === "plant" || t === "leaf") return { x: 250, y: 390 };
   if (t === "label") return { x: 400, y: 310 };
   return { x: 400, y: 300 };
@@ -113,10 +114,10 @@ function normalizeActor(sceneIdx: number, actor: BackendActor, idx: number): Nor
 }
 
 function normalizeScene(scene: BackendScene, idx: number, prevStart: number): NormalizedScene {
-  const duration = Math.max(1200, n(scene?.duration, 4500));
+  let duration = Math.max(1200, n(scene?.duration, 4500));
   const startTime = Math.max(0, n(scene?.startTime, prevStart));
   const actorsRaw = Array.isArray(scene?.actors) ? scene.actors : [];
-  const actors = actorsRaw.map((a, aIdx) => normalizeActor(idx, a, aIdx));
+  let actors = actorsRaw.map((a, aIdx) => normalizeActor(idx, a, aIdx));
 
   if (actors.length === 0) {
     animationWarn("normalize", "Scene has no actors. Creating fallback label actor.", {
@@ -139,6 +140,14 @@ function normalizeScene(scene: BackendScene, idx: number, prevStart: number): No
       ),
     );
   }
+
+  const repaired = repairSceneActors(
+    actors,
+    duration,
+    String(scene?.text || ""),
+  );
+  actors = repaired.actors;
+  duration = repaired.duration;
 
   return {
     id: String(scene?.id || `scene_${idx + 1}`),

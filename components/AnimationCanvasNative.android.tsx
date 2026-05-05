@@ -2,9 +2,11 @@
  * AnimationCanvasNative.android.tsx — Android uses WebView instead of GLView.
  *
  * expo-2d-context (GLView) has known issues on Android: crashes, gradient bugs,
- * text not rendering. test-visual works because it uses WebView with a real
- * HTML canvas. This file delegates to AnimationCanvasWebView for Android.
+ * text not rendering. This file delegates to AnimationCanvasWebView so playback
+ * uses a real HTML canvas inside a WebView.
  */
+
+import { StyleSheet, View } from "react-native";
 
 import { AnimationCanvasWebView } from "./AnimationCanvasWebView";
 
@@ -12,14 +14,32 @@ type Props = {
   isPlaying: boolean;
   script?: any | null;
   currentTimeMs?: number;
+  onTogglePlayRequest?: () => void;
 };
 
-export function AnimationCanvasNative({ isPlaying, script, currentTimeMs }: Props) {
+export function AnimationCanvasNative({
+  isPlaying,
+  script,
+  currentTimeMs,
+  onTogglePlayRequest,
+}: Props) {
   return (
-    <AnimationCanvasWebView
-      isPlaying={isPlaying}
-      script={script}
-      currentTimeMs={currentTimeMs}
-    />
+    <View style={styles.container}>
+      <AnimationCanvasWebView
+        isPlaying={isPlaying}
+        script={script}
+        currentTimeMs={currentTimeMs}
+        onTogglePlayRequest={onTogglePlayRequest}
+      />
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    borderRadius: 20,
+    overflow: "hidden",
+    backgroundColor: "#0F172A",
+  },
+});

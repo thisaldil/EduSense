@@ -1,6 +1,5 @@
 /**
- * Example: timeline-aligned narration caption with Option A gating — text appears only when
- * that segment’s TTS is prefetched (segmentStates[id].status === "ready").
+ * Timeline narration status: caption text is shown in the lesson scene narration area to avoid duplication.
  *
  * Deps: React Native primitives only; pairs with hooks/useNarrationPrefetch.ts
  */
@@ -30,17 +29,8 @@ export function NarrationTimelineCaption({
 
   if (!overlay?.narration?.length || !audioEnabled) return null;
 
-  if (!active) {
-    return (
-      <View style={st.box}>
-        <Text style={st.hint}>
-          {currentTimeMs > 0
-            ? "Between narration clips…"
-            : "Narration begins with the timeline…"}
-        </Text>
-      </View>
-    );
-  }
+  // Caption text is shown once in lesson-player scene narration; avoid duplicating it here.
+  if (!active) return null;
 
   const seg = segmentStates[active.id];
   const ready = seg?.status === "ready";
@@ -48,7 +38,7 @@ export function NarrationTimelineCaption({
 
   return (
     <View style={st.box}>
-      <Text style={st.label}>NARRATION (timeline)</Text>
+      {/* <Text style={st.label}>NARRATION (timeline)</Text>
       {!ready && !err ? (
         <View style={st.row}>
           <ActivityIndicator color="#2563EB" />
@@ -56,9 +46,7 @@ export function NarrationTimelineCaption({
         </View>
       ) : err ? (
         <Text style={st.error}>{err}</Text>
-      ) : (
-        <Text style={st.body}>{active.text}</Text>
-      )}
+      ) : null} */}
     </View>
   );
 }
@@ -79,8 +67,6 @@ const st = StyleSheet.create({
     letterSpacing: 0.6,
     marginBottom: 6,
   },
-  body: { fontSize: 15, lineHeight: 22, color: "#0F172A" },
-  hint: { fontSize: 13, color: "#64748B" },
   row: { flexDirection: "row", alignItems: "center" },
   loading: { fontSize: 14, color: "#475569" },
   loadingPad: { marginLeft: 8 },
