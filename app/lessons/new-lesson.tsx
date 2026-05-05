@@ -75,10 +75,84 @@ function inferLessonMetaFromText(content: string): {
   return { title, subject };
 }
 
+/**
+ * Scope check aligned to the supported science book units (Grade-style life /
+ * physical science). At least one unit must match; obvious history/humanities
+ * without a unit match is blocked. Backend checks remain the source of truth
+ * for production.
+ */
+const CURRICULUM_UNIT_PATTERNS: RegExp[] = [
+  /\b(photosynth|chlorophyll|stomata)\b|\bglucose\b.*\boxygen\b|\bplants?\b.*\b(food|sun(light)?|carbon dioxide)\b/i,
+  /\bstates of matter\b|\bsolid\b.*\bliquid\b.*\bgas\b|\bgas\b.*\bparticles?\b.*\bmove|\bmelting\b|\bevaporat/i,
+  /\bwater cycle\b|\bwater vapou?r\b|\bcondens(es|ation)\b|\bprecipitation\b|\bevaporat/i,
+  /\bfossil fuels?\b|\brenewable energy\b|\bsolar panels?\b|\bwind turbines?\b|\bhydropower\b|energy cannot be created|converted from one form|primary source of energy|ability to do work[\s\S]{0,120}many forms|\belectrical energy\b/i,
+  /\brefraction\b|\breflection\b|\btransparent\b|\btranslucent\b|\bopaque\b|\blight\b.*\b(straight lines|energy|travel)/i,
+  /\bsound\b.*\bvibrat|\bvibrat.*\bsound\b|\beardrum\b|\bpitch\b.*\bvolume\b|\bsound\b.*\bvacuum\b/i,
+  /\bmagnets?\b|\bmagnetic field\b|\bnorth pole\b|\bsouth pole\b|\bcompass\b|attract.*repel|repel.*attract/i,
+  /\belectricity\b.*\b(circuit|electrons?|current)\b|\bcircuit\b.*\b(battery|bulb|wires?)\b|\bconductors?\b.*\binsulators?\b|\bcomplete path\b/i,
+  /\bheat transfer\b|\bconduction\b|\bconvection\b|\bradiation\b.*\b(heat|sun|space|earth)\b|\bwarmer\b.*\bcooler\b/i,
+  /\bfood chains?\b|\bherbivores?\b|\bcarnivores?\b|\bproducers?\b|\bprimary consumers?\b|\bsecondary consumers?\b|\bdecomposers?\b/i,
+  /\bweather refers\b|\bclimate describes\b|\bweather and climate\b|\bextreme weather\b|\baverage weather patterns\b|\bshort-term conditions\b.*\batmosphere\b|\batmosphere\b.*\b(temperature|rain|wind)/i,
+];
+
+function countCurriculumUnitHits(content: string): number {
+  return CURRICULUM_UNIT_PATTERNS.reduce(
+    (n, pattern) => (pattern.test(content) ? n + 1 : n),
+    0,
+  );
+}
+
+function validateScienceScopeContent(
+  content: string,
+): { ok: true } | { ok: false; message: string } {
+  const trimmed = content.trim();
+  if (trimmed.length < 12) {
+    return { ok: true };
+  }
+
+  const unitHits = countCurriculumUnitHits(trimmed);
+
+  const nonScienceTopicLike =
+    /\b(world war|wwii|wwi|\bww1\b|\bww2\b|ancient rome|roman empire|byzantine|medieval|\bthe renaissance\b|\breformation\b|treaty of|declaration of independence|\bnapoleon\b|cold war|\bmonarchy\b|\bdynasty\b|shakespeare|literary analysis|\bsonnet\b|parts of speech|\bgrammar\b|\beconomics\b|\bphilosophy\b|historical figure|primary source|history lesson|social studies|ancient greece|persian empire)\b/i.test(
+      trimmed,
+    );
+
+  if (unitHits === 0) {
+    if (nonScienceTopicLike) {
+      return {
+        ok: false,
+        message:
+          "This looks like a different subject (for example history or language). EduSense only accepts lesson notes from your science book topics: plants and photosynthesis, matter, water cycle, energy, light, sound, magnets, electricity, heat, food chains, and weather.",
+      };
+    }
+    return {
+      ok: false,
+      message:
+        "Paste notes from your science book only. Supported topics include: plants & photosynthesis, states of matter, the water cycle, energy in daily life, light & vision, sound & hearing, magnets, electricity & circuits, heat transfer, food chains, and weather & climate.",
+    };
+  }
+
+  if (nonScienceTopicLike && unitHits < 2) {
+    return {
+      ok: false,
+      message:
+        "This text still looks mostly like another subject. Add science book notes about a supported topic (photosynthesis, matter, water cycle, energy, light, sound, magnets, electricity, heat, food chains, or weather).",
+    };
+  }
+
+  return { ok: true };
+}
+
 export default function NewLessonScreen() {
   const [text, setText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  /** Shown under the text box when notes are not from supported science topics. */
+  const [contentScopeError, setContentScopeError] = useState<string | null>(
+    null,
+  );
+  /** Shown after the action button when create lesson fails. */
+  const [saveError, setSaveError] = useState<string | null>(null);
   const maxChars = 2000;
 
   React.useEffect(() => {
@@ -105,7 +179,9 @@ export default function NewLessonScreen() {
     };
 
     return () => {
-      NativeVoice.destroy().then(NativeVoice.removeAllListeners).catch(() => {});
+      NativeVoice.destroy()
+        .then(NativeVoice.removeAllListeners)
+        .catch(() => {});
     };
   }, []);
 
@@ -226,7 +302,9 @@ export default function NewLessonScreen() {
       }
 
       setText((prev) =>
-        prev ? `${prev.trim()}\n\n${extractedText.trim()}` : extractedText.trim(),
+        prev
+          ? `${prev.trim()}\n\n${extractedText.trim()}`
+          : extractedText.trim(),
       );
     } catch (error: any) {
       Alert.alert(
@@ -238,6 +316,15 @@ export default function NewLessonScreen() {
 
   const handleGenerate = async () => {
     if (text.length === 0) return;
+
+    setContentScopeError(null);
+    setSaveError(null);
+
+    const scope = validateScienceScopeContent(text);
+    if (!scope.ok) {
+      setContentScopeError(scope.message);
+      return;
+    }
 
     const sessionId = generateSessionId();
 
@@ -261,9 +348,9 @@ export default function NewLessonScreen() {
         },
       });
     } catch (error: any) {
-      Alert.alert(
-        "Error",
-        error.message || "Failed to create lesson. Please try again.",
+      setSaveError(
+        error?.message ||
+          "We couldn’t create your lesson. Check your connection and try again.",
       );
     } finally {
       setIsLoading(false);
@@ -290,7 +377,7 @@ export default function NewLessonScreen() {
           <View style={styles.headerCenter}>
             <Text style={styles.headerTitle}>Create New Lesson</Text>
             <Text style={styles.headerSubtitle}>
-              Set up the content for your new lesson.
+              Science notes from your book work best.
             </Text>
           </View>
           <View style={{ width: 40 }} />
@@ -304,8 +391,8 @@ export default function NewLessonScreen() {
             </View>
             <Text style={styles.illustrationTitle}>Start Your Journey</Text>
             <Text style={styles.illustrationText}>
-              Add your lesson content below. We'll transform it into an amazing
-              sensory experience!
+              Paste or scan science lesson notes below. History and other
+              subjects are not supported yet—we focus on STEM concepts.
             </Text>
           </View>
         </View>
@@ -327,7 +414,11 @@ export default function NewLessonScreen() {
               </View>
               <View style={styles.inputHeaderActions}>
                 <Pressable style={styles.pasteButton} onPress={handlePaste}>
-                  <Ionicons name="clipboard" size={16} color={Colors.deepBlue} />
+                  <Ionicons
+                    name="clipboard"
+                    size={16}
+                    color={Colors.deepBlue}
+                  />
                   <Text style={styles.pasteButtonText}>Paste</Text>
                 </Pressable>
                 <Pressable
@@ -343,17 +434,52 @@ export default function NewLessonScreen() {
 
             <TextInput
               style={styles.textInput}
-              placeholder="Paste your lesson here... 
+              placeholder="Paste science lesson notes here...
 
 Example: 'Photosynthesis is how plants make their food using sunlight, water, and air. It's like cooking with sunshine!' ☀️🌱"
               placeholderTextColor={Colors.light.textSecondary}
               multiline
               textAlignVertical="top"
               value={text}
-              onChangeText={(value) =>
-                value.length <= maxChars ? setText(value) : null
-              }
+              onChangeText={(value) => {
+                if (value.length > maxChars) return;
+                setText(value);
+                if (contentScopeError) setContentScopeError(null);
+                if (saveError) setSaveError(null);
+              }}
             />
+
+            {contentScopeError ? (
+              <View
+                style={styles.inlineErrorBanner}
+                accessibilityRole="alert"
+                accessibilityLiveRegion="polite"
+              >
+                <Ionicons
+                  name="alert-circle"
+                  size={22}
+                  color="#DC2626"
+                  style={styles.inlineErrorIcon}
+                />
+                <View style={styles.inlineErrorTextWrap}>
+                  <Text style={styles.inlineErrorTitle}>
+                    This lesson isn’t from a supported science topic
+                  </Text>
+                  <Text style={styles.inlineErrorBody}>{contentScopeError}</Text>
+                </View>
+                <Pressable
+                  onPress={() => setContentScopeError(null)}
+                  hitSlop={12}
+                  accessibilityLabel="Dismiss message"
+                >
+                  <Ionicons
+                    name="close"
+                    size={22}
+                    color={Colors.light.textSecondary}
+                  />
+                </Pressable>
+              </View>
+            ) : null}
 
             <View style={styles.inputFooter}>
               <View style={styles.charCounter}>
@@ -413,8 +539,8 @@ Example: 'Photosynthesis is how plants make their food using sunlight, water, an
           <View style={styles.infoContent}>
             <Text style={styles.infoTitle}>Sensory lesson generation</Text>
             <Text style={styles.infoText}>
-              Your text will be turned into interactive visuals, sounds, and
-              activities.
+              Your science notes become interactive visuals, sounds, and
+              activities. Other subjects may be declined.
             </Text>
           </View>
         </View>
@@ -442,10 +568,49 @@ Example: 'Photosynthesis is how plants make their food using sunlight, water, an
           <View style={styles.buttonShine} />
         </Pressable>
 
+        {saveError ? (
+          <View
+            style={[styles.inlineErrorBanner, styles.saveErrorBanner]}
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
+          >
+            <Ionicons
+              name="cloud-offline"
+              size={22}
+              color="#DC2626"
+              style={styles.inlineErrorIcon}
+            />
+            <View style={styles.inlineErrorTextWrap}>
+              <Text style={styles.inlineErrorTitle}>
+                Couldn’t create the lesson
+              </Text>
+              <Text style={styles.inlineErrorBody}>{saveError}</Text>
+            </View>
+            <Pressable
+              onPress={() => setSaveError(null)}
+              hitSlop={12}
+              accessibilityLabel="Dismiss error"
+            >
+              <Ionicons
+                name="close"
+                size={22}
+                color={Colors.light.textSecondary}
+              />
+            </Pressable>
+          </View>
+        ) : null}
+
         {/* Tips Section */}
         <View style={styles.tipsCard}>
           <Text style={styles.tipsTitle}>Quick tips</Text>
           <View style={styles.tipsList}>
+            <View style={styles.tipItem}>
+              <View style={styles.tipBullet} />
+              <Text style={styles.tipText}>
+                Use life, physical, or earth science (and related math), not
+                history or literature
+              </Text>
+            </View>
             <View style={styles.tipItem}>
               <View style={styles.tipBullet} />
               <Text style={styles.tipText}>
@@ -650,6 +815,39 @@ const styles = StyleSheet.create({
     color: Colors.light.text,
     minHeight: 160,
     marginBottom: 12,
+  },
+  inlineErrorBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    marginBottom: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+  },
+  saveErrorBanner: {
+    marginHorizontal: 20,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  inlineErrorIcon: {
+    marginTop: 2,
+  },
+  inlineErrorTextWrap: {
+    flex: 1,
+  },
+  inlineErrorTitle: {
+    ...Typography.bodyMedium,
+    color: "#991B1B",
+    marginBottom: 6,
+  },
+  inlineErrorBody: {
+    ...Typography.caption,
+    color: "#7F1D1D",
+    lineHeight: 20,
   },
   inputFooter: {
     flexDirection: "row",

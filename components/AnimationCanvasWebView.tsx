@@ -1083,25 +1083,6 @@ const ANIM_JS = `
     ];
   }
 
-  function drawCaption(sceneText,stepLabel,elapsed) {
-    var text=stepLabel||sceneText; if(!text) return;
-    var alpha=fadeIn(elapsed,80,420); if(alpha<=0.01) return;
-    var bannerH=Math.round(H*0.075), bannerY=H-bannerH;
-    var fontSize=Math.round(W*0.022);
-    fontSize=Math.max(12,fontSize);
-    ctx.save(); ctx.globalAlpha=alpha;
-    ctx.fillStyle="rgba(15,23,42,0.88)";
-    ctx.fillRect(0,bannerY,W,bannerH);
-    ctx.fillStyle="#F8FAFC";
-    ctx.font="bold "+fontSize+"px sans-serif";
-    ctx.textAlign="center"; ctx.textBaseline="middle";
-    var pad=Math.round(W*0.045);
-    var maxW=W-pad*2, out=text;
-    while(ctx.measureText(out).width>maxW&&out.length>12) out=out.slice(0,-4)+"...";
-    ctx.fillText(out,W*0.5,bannerY+bannerH*0.5);
-    ctx.restore();
-  }
-
   // ── Main render ─────────────────────────────────────────────────────────────
   function renderFrame() {
     if (!state.script) { ctx.clearRect(0,0,W,H); return; }
@@ -1138,7 +1119,6 @@ const ANIM_JS = `
     var strength=usingInferred?1:0.45;
     for(var i=0;i<idx;i++) steps[i].draw(1,time,strength);
     steps[idx].draw(easeOut(local),time,strength);
-    drawCaption(scene.text||"",steps[idx].label,elapsed);
   }
 
   function tick(ts) {

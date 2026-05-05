@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   SafeAreaView,
@@ -29,6 +35,9 @@ import type { SensoryOverlay } from "@/types/sensory";
 import { overlayFromPlaybackScript } from "@/services/narrationAudio";
 import { sensoryManager } from "@/services/sensoryManager";
 import { activeAudioTimelineIndex } from "@/utils/audioTimeline";
+
+const { width: SCREEN_W } = Dimensions.get("window");
+const CANVAS_H = Math.round(SCREEN_W * (600 / 800));
 
 type AnimationScript = animationApi.NeuroAdaptiveAnimationScript;
 type EnrichedScript = sensoryEnrichApi.EnrichedAnimationScript;
@@ -588,7 +597,9 @@ export function LessonAnimationPanel({
 
   const narrationPrefetch = useNarrationPrefetch(prefetchSensoryOverlay);
   const sensoryAudioOn = useSensoryStore((s) => s.audioEnabled);
-  const narrationPlaybackError = useSensoryStore((s) => s.narrationPlaybackError);
+  const narrationPlaybackError = useSensoryStore(
+    (s) => s.narrationPlaybackError,
+  );
 
   return (
     <View style={panelSt.root}>
@@ -709,14 +720,14 @@ export function LessonAnimationPanel({
         </View>
       )}
 
-      {playbackScript && !loading && !error && narrationPrefetch.overlay && (
+      {/* {playbackScript && !loading && !error && narrationPrefetch.overlay && (
         <NarrationTimelineCaption
           overlay={narrationPrefetch.overlay}
           currentTimeMs={currentTime}
           segmentStates={narrationPrefetch.segmentStates}
           audioEnabled={sensoryAudioOn}
         />
-      )}
+      )} */}
 
       {playbackScript &&
         !loading &&
@@ -760,7 +771,8 @@ export function LessonAnimationPanel({
               if (isPlaying) {
                 setIsPlaying(false);
               } else {
-                if (currentTime >= (playbackScript.duration ?? 0)) setCurrentTime(0);
+                if (currentTime >= (playbackScript.duration ?? 0))
+                  setCurrentTime(0);
                 setIsPlaying(true);
               }
             }}
@@ -877,7 +889,7 @@ const panelSt = StyleSheet.create({
 
   canvasWrap: {
     width: "100%",
-    height: 260,
+    height: CANVAS_H,
     borderRadius: 20,
     overflow: "hidden",
     backgroundColor: "#0F172A",
@@ -1111,12 +1123,13 @@ export default function LessonPlayerScreen() {
   } = useNeuroState();
   const { logInteraction, triggerPrediction } = useAnalyticsLogger();
 
-  const { script, sessionMeta, loading, error, refetch } = useNeuroAdaptiveScript({
-    lessonId: params.lesson_id,
-    studentId: user?.id,
-    sessionId: undefined,
-    cognitiveState: neuroState.currentState,
-  });
+  const { script, sessionMeta, loading, error, refetch } =
+    useNeuroAdaptiveScript({
+      lessonId: params.lesson_id,
+      studentId: user?.id,
+      sessionId: undefined,
+      cognitiveState: neuroState.currentState,
+    });
 
   useFocusEffect(
     useCallback(() => {
