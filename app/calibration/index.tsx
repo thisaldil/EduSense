@@ -411,49 +411,6 @@ type PlantZone = {
   isTarget: boolean;
 };
 
-const buildZonesOld = (target: "Leaf" | "Root"): PlantZone[] => [
-  {
-    label: "Leaf",
-    left: "1%",
-    top: "27%",
-    width: "24%",
-    height: "9%",
-    isTarget: target === "Leaf",
-  },
-  {
-    label: "Root",
-    left: "1%",
-    top: "80%",
-    width: "24%",
-    height: "9%",
-    isTarget: target === "Root",
-  },
-  {
-    label: "Flower",
-    left: "60%",
-    top: "13%",
-    width: "30%",
-    height: "9%",
-    isTarget: false,
-  },
-  {
-    label: "Stem",
-    left: "14%",
-    top: "57%",
-    width: "20%",
-    height: "8%",
-    isTarget: false,
-  },
-  {
-    label: "Fruit",
-    left: "57%",
-    top: "51%",
-    width: "20%",
-    height: "8%",
-    isTarget: false,
-  },
-];
-
 const VisualTask: React.FC<TaskProps & { config: typeof VISUAL_VARIANTS[0] }> = ({ onComplete, config }) => {
   const [round, setRound] = useState(0);
   const [errors, setErrors] = useState(0);
