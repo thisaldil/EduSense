@@ -38,7 +38,8 @@ export function NarrationTimelineCaption({
 
   return (
     <View style={st.box}>
-      {/* <Text style={st.label}>NARRATION (timeline)</Text>
+      {/* <Text style={st.label}>
+      </Text>
       {!ready && !err ? (
         <View style={st.row}>
           <ActivityIndicator color="#2563EB" />

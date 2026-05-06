@@ -57,4 +57,3 @@ export const useSensoryStore = create<SensoryState>((set) => ({
   setSessionId: (id) => set({ sessionId: id }),
   setNarrationPlaybackError: (msg) => set({ narrationPlaybackError: msg }),
 }));
-
